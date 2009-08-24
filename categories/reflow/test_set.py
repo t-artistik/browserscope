@@ -24,6 +24,7 @@ __author__ = 'elsigh@google.com (Lindsey Simon)'
 import logging
 
 from categories import test_set_base
+from categories import test_set_params
 
 
 _CATEGORY = 'reflow'
@@ -42,26 +43,16 @@ class ReflowTest(test_set_base.TestBase):
         min_value=0,
         max_value=60000)
 
-  def ParseResults(self, results):
-    """Normalizes the raw scores before sending them to the median trees.
-    Args:
-      results: A results dict. See util.ParseResults
-    Returns:
-      A results dict suitable for models.ResultParent.AddResults
-    """
-
-
-
   def GetScoreAndDisplayValue(self, median):
-    """Returns a tuple with display text for the cell as well as a 1-100 value.
-    i.e. ('1X', 95)
+    """Returns a tuple of a value (1 to 100) and display text for the cell.
     Args:
       median: The test median.
     Returns:
-      A tuple of display, score
+      (display_text, score)  # e.g. ('1x', 95)
+      # All the scores are set to be percentages.
     """
-    # We'll give em the benefit of the doubt here.
     if median == None or median == '':
+      # We'll give em the benefit of the doubt here.
       return 90, ''
 
     median = int(median)
@@ -88,13 +79,7 @@ class ReflowTest(test_set_base.TestBase):
     else:
       score = 60
       display = '3X'
-
-
-    # All the scores are set to be percentages
-
-
     return score, display
-
 
 
 _TESTS = (
@@ -171,7 +156,7 @@ _TESTS = (
 BASELINE_TEST_NAME = 'testDisplay'
 class ReflowTestSet(test_set_base.TestSet):
 
-  def ParseResults(self, results):
+  def AdjustResults(self, results):
     """Re-scores the actual value against a baseline score for reflow.
 
     Sets the 1x reflow time for this test run and compares other times
@@ -181,17 +166,17 @@ class ReflowTestSet(test_set_base.TestSet):
     we want to do some calculations with it later.
 
     Args:
-      results: a list of dicts.
+      results: a list of dicts like [{'key': key_1, 'score': score_1}, ...]
 
     Returns:
-      results: a list of dicts (with an expando key).
+      results: a list of dicts with an expando key added.
+      [{'key': key_1, 'score': modified_score_1, 'expando': score_1}, ...]
     """
-    baseline_score = 0
     for result in results:
       if result['key'] == BASELINE_TEST_NAME:
         baseline_score = float(result['score'])
         break
-    if not baseline_score:
+    else:
       raise NameError('No baseline score found in the test results')
     #logging.info('baseline is %s' % baseline_score)
 
@@ -199,12 +184,8 @@ class ReflowTestSet(test_set_base.TestSet):
     # This resets the score in the dict, but adds an expando to preserve the
     # original score's milliseconds value.
     for result in results:
-      score = int(result['score'])
-      result['expando'] = score
-      result['score'] = int((float(score) / baseline_score) * 100)
-      #logging.info('%s/%s * 100 = %s' % (score, baseline_score,
-      #             (float(score) / baseline_score) * 100))
-    #logging.info('results: %s' % results)
+      result['expando'] = result['score']
+      result['score'] = int(result['score'] / baseline_score * 100)
     return results
 
 
@@ -217,9 +198,9 @@ TEST_SET = ReflowTestSet(
     'About': '/%s/about' % _CATEGORY
   },
   home_intro='''Reflow in a web browser refers to the process whereby the render engine calculates positions and geometries of elements in the document for purpose of drawing, or re-drawing, the visual presentation. Because reflow is a user-blocking operation in the browser, it is useful for developers to understand how to improve reflow times and also to understand the effects of various document properties (DOM nesting, CSS specificity, types of style changes) on reflow. <a href="/reflow/about">Read more about reflow and these tests.</a>''',
-  # default_params=[
+  # default_params=Params(
   # 'nested_anchors', 'num_elements=400', 'num_nest=4',
-  # 'css_selector=%23g-content%20*', 'num_css_rules=1000',
-  # 'css_text=border%3A%201px%20solid%20%230C0%3B%20padding%3A%208px%3B'],
-  default_params=['acid1', 'num_elements=300'],
+  # 'css_selector=#g-content *', 'num_css_rules=1000',
+  # 'css_text=border: 1px solid #0C0; padding: 8px;'),
+ default_params=test_set_params.Params('acid1', 'num_elements=300'),
 )

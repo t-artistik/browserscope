@@ -28,6 +28,7 @@ from django.http import HttpRequest
 from django.test.client import Client
 
 from base import util
+from categories import test_set_params
 from models.result import ResultParent
 from models.result import ResultTime
 from models.user_agent import UserAgent
@@ -49,7 +50,8 @@ class TestUtilHandlers(unittest.TestCase):
 
 
   def testHomeWithResults(self):
-    params = {'reflow_results': 'testDisplay=1558'}
+    test_set = mock_data.MockTestSet('cat_home')
+    params = {'cat_home_results': 'testDisplay=1558,testVisibility=1227'}
     response = self.client.get('/', params, **mock_data.UNIT_TEST_UA)
     self.assertEqual(200, response.status_code)
 
@@ -131,15 +133,17 @@ class TestUtilHandlers(unittest.TestCase):
     category = 'test_beacon_w_params'
     test_set = mock_data.MockTestSet(category)
     csrf_token = self.client.get('/get_csrf').content
-    beacon_params = ['nested_anchors', 'num_elements=1000',
-        'num_css_rules=1000', 'num_nest=2',
-        'css_selector=%23g-content%20*',
-        'css_text=border%3A%201px%20solid%20%230C0%3B%20padding%3A%208px%3B']
-
+    beacon_params = test_set_params.Params(
+        'nested_anchors',
+        'num_elements=1000',
+        'num_css_rules=1000',
+        'num_nest=2',
+        'css_selector=#g-content *',
+        'css_text=border: 1px solid #0C0; padding: 8px;')
     params = {
       'category': category,
       'results': 'testDisplay=1,testVisibility=2',
-      'params': ','.join(beacon_params),
+      'params': str(beacon_params),
       'csrf_token': csrf_token
     }
     response = self.client.get('/beacon', params, **mock_data.UNIT_TEST_UA)
@@ -147,35 +151,25 @@ class TestUtilHandlers(unittest.TestCase):
     # Did a ResultParent get created?
     query = db.Query(ResultParent)
     query.filter('category =', category)
-    for param in beacon_params:
-      query.filter('params =', param)
+    query.filter('params_str =', str(beacon_params))
     result_parent = query.get()
-    self.assertNotEqual(result_parent, None)
+    self.assertNotEqual(None, result_parent)
 
     # Were ResultTimes created?
     result_times = ResultTime.all().ancestor(result_parent)
     self.assertEqual(2, result_times.count())
     self.assertEqual(1, result_times[0].score)
     self.assertEqual('testDisplay', result_times[0].test)
+    self.assertEqual(True, result_times[0].dirty)
     self.assertEqual(2, result_times[1].score)
     self.assertEqual('testVisibility', result_times[1].test)
-    self.assertEqual(True, result_times[0].dirty)
     self.assertEqual(True, result_times[1].dirty)
 
 
 class TestUtilFunctions(unittest.TestCase):
 
   def testCheckThrottleIpAddress(self):
-    self.assertEqual(True, util.CheckThrottleIpAddress('192.168.1.1'))
-
-
-  def testParseResultsParamString(self):
-    expected = [{'score': '5', 'key': 'test1'}, {'score': '10', 'key': 'test2'}]
-    parsed_results = util.ParseResultsParamString('test1=5,test2=10')
-    are_equal = expected == parsed_results
-    # TODO(elsigh): figure this out one day.
-    # Why can't we just do assertEqual on dictionaries in gaeunit?
-    self.assertTrue(are_equal)
+    self.assert_(util.CheckThrottleIpAddress('192.168.1.1'))
 
 
 class TestStats(unittest.TestCase):
@@ -201,7 +195,7 @@ class TestStats(unittest.TestCase):
     request.META = {'HTTP_USER_AGENT': 'Firefox 3.0.1'}
 
     stats = util.GetStatsData(test_set.category,
-        test_set.tests, user_agents, params=None,
+        test_set.tests, user_agents, params_str=None,
         use_memcache=use_memcache)
 
     expected_medians = {'testDisplay': 300, 'testVisibility': 2}
@@ -225,6 +219,18 @@ class TestStats(unittest.TestCase):
   def testGetStatsDataWithoutMemcache(self):
     self.GetStatsData(use_memcache=False)
 
+  def testGetStatsDataWithParamsLiteralNoneRaises(self):
+    # A params_str with a None value is fine, but not a 'None' string
+    test_set = mock_data.MockTestSet('categore')
+    self.assertRaises(
+        ValueError,
+        util.GetStatsData, test_set.category, test_set.tests, ['ua1'], 'None')
+
+  def testGetStatsDataWithParamsEmptyStringRaises(self):
+    test_set = mock_data.MockTestSet('categore')
+    self.assertRaises(
+        ValueError,
+        util.GetStatsData, test_set.category, test_set.tests, ['ua1'], '')
 
 if __name__ == '__main__':
   unittest.main()
