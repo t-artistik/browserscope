@@ -26,20 +26,20 @@ indexes:
 # automatically uploaded to the admin console when you next deploy
 # your application using appcfg.py.
 
-# Used once in query history.
+# Unused in query history -- copied from input.
 - kind: ResultParent
   properties:
   - name: category
   - name: params_str
 
-# Used 128 times in query history.
+# Unused in query history -- copied from input.
 - kind: ResultParent
   properties:
   - name: category
   - name: params_str,user_agent_pretty
   - name: __key__
 
-# Used 132 times in query history.
+# Unused in query history -- copied from input.
 - kind: ResultTime
   ancestor: yes
 

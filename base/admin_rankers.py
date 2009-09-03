@@ -59,13 +59,130 @@ class PagerQuery(pager.PagerQuery):
   def GetBookmark(self, entity):
     """Return a bookmark for the given entity.
 
-    This is handy if you want to start from the middle of a result set.
+    The returned bookmark causes a PagerQuery to start after the given
+    entity--it is not included.
     """
     return pager.encode_bookmark(self._get_bookmark_values(entity))
 
 
-MAX_TESTS = 100
+class ResultParentQuery(object):
+  def __init__(self, category, fetch_limit, bookmark):
+    self.bookmark = bookmark
+    self.query = PagerQuery(ResultParent, keys_only=True)
+    self.query.filter('category =', category)
+    self.query.order('user_agent_pretty')
+    prev_bookmark, self.results, self.next_bookmark = self.query.fetch(
+        fetch_limit, bookmark)
+    self.num_results = len(self.results)
+    self.index = 0
 
+  def HasNext(self):
+    return self.index < self.num_results
+
+  def GetNext(self):
+    if self.HasNext():
+      result_parent_key = self.results[self.index]
+      self.index += 1
+      return ResultParent.get(result_parent_key)
+    else:
+      return None
+
+  def PushBack(self):
+    self.index -= 1
+    assert self.index >= 0
+
+  def GetBookmark(self):
+    if self.index == 0:
+      return self.bookmark
+    elif not self.HasNext():
+      return self.next_bookmark
+    else:
+      return self.query.GetBookmark(self.results[self.index - 1])
+
+  def GetCountUsed(self):
+    return self.index
+
+
+class ResultTimeQuery(object):
+  def __init__(self):
+    self.query = db.GqlQuery(
+        "SELECT * FROM ResultTime WHERE ANCESTOR IS :1 AND dirty = False")
+
+  def fetch(self, fetch_limit, result_parent):
+    self.query.bind(result_parent)
+    return self.query.fetch(fetch_limit)
+
+
+def _AddRankerScores(ranker_scores, user_agent_list, result_times):
+  """Modify ranker_scores to have all result_times added for each user agent."""
+  for user_agent_version in user_agent_list:
+    for result_time in result_times:
+      ranker_scores.setdefault(
+          (user_agent_version, result_time.test), []).append(result_time.score)
+
+
+def _CollectScores(result_parent_query, ranker_limit, num_tests):
+  """Collect the scores for each result parent.
+
+  Stop when all the result_parents are processed or when the
+  the next result_parent would go over the ranker limit.
+
+  Args:
+    result_parent_query: a ResultParentQuery instance
+    ranker_limit: the number of rankers that may be updated.
+    num_tests: the number of tests each result parent has.
+  Returns:
+    {user_agent_version: [score_1, score_2, ...], ...}
+  """
+  ranker_scores = {}
+  user_agent_versions = {}
+  result_time_query = ResultTimeQuery()
+  while result_parent_query.HasNext():
+    result_parent = result_parent_query.GetNext()
+    user_agent_pretty = result_parent.user_agent_pretty
+    if user_agent_pretty not in user_agent_versions:
+      user_agent_list = UserAgent.parse_to_string_list(user_agent_pretty)
+      user_agent_versions[user_agent_pretty] = user_agent_list
+      if len(ranker_scores) + num_tests * len(user_agent_list) > ranker_limit:
+        result_parent_query.PushBack()  # Save this result_parent for later
+        break
+    else:
+      user_agent_list = user_agent_versions[user_agent_pretty]
+
+    result_times = result_time_query.fetch(MAX_TESTS, result_parent)
+    _AddRankerScores(ranker_scores, user_agent_list, result_times)
+  return ranker_scores
+
+
+def _UpdateRankers(ranker_scores, test_set, bookmark):
+  """Add items in ranker_scores to their respective rankers.
+
+  Args:
+    ranker_scores:
+    test_set:
+    bookmark:
+  """
+  category = test_set.category
+  for ranker_key, scores in ranker_scores.iteritems():
+    test_key, user_agent_version, params_str = ranker_key
+    try:
+      test = test_set.GetTest(test_key)
+    except KeyError:
+      # 'test' is needed so GetOrCreate can have test.key, test.min_value,
+      # and test.max_value
+      logging.warn('RebuildRankers: test not found: %s', test_key)
+      continue
+    ranker = result_ranker.ResultRanker.GetOrCreate(
+        category, test, user_agent_version, params_str, ranker_version='next')
+    if not bookmark and ranker.TotalRankedScores():
+      logging.warn('RebuildRankers: reset ranker: %s', ', '.join(map(str, [
+          category, test_key, user_agent_version, params_str,
+          'ranker_version="next"'])))
+      ranker.Reset()
+    ranker.Update(scores)
+
+
+MAX_TESTS = 100
 def RebuildRankers(request):
   """Rebuild rankers."""
   bookmark = request.GET.get('bookmark')
@@ -78,100 +195,50 @@ def RebuildRankers(request):
   #            reflow rankers <= 13 * 4 <= 52
   #           network rankers <= 12 * 4 <= 48
   ranker_limit = int(request.GET.get('ranker_limit', 80))
+
   try:
     if not manage_dirty.UpdateDirtyController.IsPaused():
       manage_dirty.UpdateDirtyController.SetPaused(True)
 
     category = settings.CATEGORIES[category_index]
-
-    # Query result parents and group by user_agent_pretty
-    parent_query = PagerQuery(ResultParent, keys_only=True)
-    parent_query.filter('category =', category)
-    parent_query.order('user_agent_pretty')
-    prev_bookmark, results, next_bookmark = parent_query.fetch(
-        fetch_limit, bookmark)
-    # Collect the scores: {user_agent_version: [score_1, score_2, ...], ...}
-    ranker_scores = {}
-    user_agent_versions = {}
-    query = db.GqlQuery(
-        "SELECT * FROM ResultTime WHERE ANCESTOR IS :1 AND dirty = False")
+    result_parent_query = ResultParentQuery(category, fetch_limit, bookmark)
     test_set = all_test_sets.GetTestSet(category)
     num_tests = len(test_set.tests)
-    last_result_parent_key = None
-    for result_parent_key in results:
-      result_parent = ResultParent.get(result_parent_key)
-      user_agent_pretty = result_parent.user_agent_pretty
-      if user_agent_pretty not in user_agent_versions:
-        user_agent_list = UserAgent.parse_to_string_list(user_agent_pretty)
-        user_agent_versions[user_agent_pretty] = user_agent_list
-        if len(ranker_scores) + num_tests * len(user_agent_list) > ranker_limit:
-          # Processing this result_parent would go over the self-imposed ranker
-          # per query limit. Set bookmark with the previous result_parent,
-          # because PagerQuery always starts the entity after the bookmark.
-          next_bookmark = parent_query.GetBookmark(last_result_parent_key)
-          break
-      else:
-        user_agent_list = user_agent_versions[user_agent_pretty]
-
-      query.bind(result_parent)
-      for result_time in query.fetch(MAX_TESTS):
-        test_key = result_time.test
-        score = result_time.score
-        for user_agent_version in user_agent_list:
-          ranker_scores.setdefault((user_agent_version, test_key), []).append(
-              result_time.score)
-      last_result_parent_key = result_parent_key
-      total_results += 1
-
-    # Add the scores.
-    for (user_agent_version, test_key), scores in ranker_scores.iteritems():
-      try:
-        test = test_set.GetTest(test_key)
-      except KeyError:
-        logging.warn('RebuildRankers: test not found: %s', test_key)
-        continue
-      ranker = result_ranker.ResultRanker.GetOrCreate(
-          category, test, user_agent_version,
-          result_parent.params_str, ranker_version='next')
-      if not bookmark and ranker.TotalRankedScores():
-        logging.warn('RebuildRankers: reset ranker: %s', ', '.join(map(str, [
-            category, test_key, user_agent_version, result_parent.params_str,
-            'ranker_version="next"'])))
-        ranker.Reset()
-      ranker.Update(scores)
+    ranker_scores = _CollectScores(result_parent_query, ranker_limit, num_tests)
+    _UpdateRankers(ranker_scores, test_set, bookmark)
 
     is_done = False
-    if not next_bookmark:
+    if not result_parent_query.HasNext():
       category_index += 1
-      if category_index >= len(settings.CATEGORIES):
-        is_done = True
+      is_done = category_index >= len(settings.CATEGORIES)
     return http.HttpResponse(simplejson.dumps({
         'is_done': is_done,
-        'bookmark': next_bookmark,
+        'bookmark': result_parent_query.GetBookmark(),
         'category_index': category_index,
         'rankers_updated': len(ranker_scores),
-        'total_results': total_scores,
+        'total_results': total_results + result_parent_query.GetCountUsed(),
         }))
   except DeadlineExceededError:
     logging.warn('DeadlineExceededError in RebuildRankers:'
                  ' bookmark=%s, category=%s, test=%s, user_agent_pretty=%s,'
                  ' total_scores=%s',
                  bookmark, category, test.key, user_agent_pretty,
-                 total_scores)
+                 total_results)
     return http.HttpResponse('RebuildRankers: DeadlineExceededError.',
                              status=403)
 
-def ReleaseNextRankers(request):
+
+def _MapNextRankers(request, parent_func):
   total = int(request.GET.get('total', 0))
   fetch_limit = int(request.GET.get('fetch_limit', 50))
   query = result_ranker.ResultRankerParent.all()
   query.filter('ranker_version =', 'next')
   ranker_parents = query.fetch(fetch_limit)
   for parent in ranker_parents:
-    parent.Release()
-  num_released = len(ranker_parents)
-  total += num_released
-  is_done = num_released < fetch_limit
+    parent_func(parent)
+  num_mapped = len(ranker_parents)
+  total += num_mapped
+  is_done = num_mapped < fetch_limit
   if is_done:
     manage_dirty.UpdateDirtyController.SetPaused(False)
     datastore.Put(datastore.Entity('ranker migration', name='complete'))
@@ -179,6 +246,19 @@ def ReleaseNextRankers(request):
       'is_done': is_done,
       'total': total
       }))
+
+
+def ReleaseNextRankers(request):
+  def _ReleaseParent(parent):
+    parent.Release()
+  _MapNextRankers(request, _ReleaseParent)
+
+
+def ResetNextRankers(request):
+  def _ResetParent(parent):
+    ranker = result_ranker.ResultRanker(parent)
+    ranker.Reset()
+  _MapNextRankers(request, _ResetParent)
 
 
 def UpdateResultParents(request):

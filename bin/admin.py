@@ -37,8 +37,9 @@ from third_party.appengine_tools import appengine_rpc
 
 COMMAND_PATHS = {
   'update_results': '/admin/update_result_parents',
-  'rebuild_rankers': '/admin/rankers/rebuild',
-  'release_rankers': '/admin/rankers/release_next',
+  'rebuild': '/admin/rankers/rebuild',
+  'release_next': '/admin/rankers/release_next',
+  'reset_next': '/admin/rankers/reset_next',
   }
 
 

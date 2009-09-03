@@ -210,7 +210,7 @@ def NestedAnchors(request):
   default_params = test_set_params.Params(
      'nested_anchors', 'num_elements=400', 'num_nest=4',
      'css_selector=p', 'num_css_rules=1000',
-     'css_text=border:1px solid green;padding: 5px']
+     'css_text=border:1px solid green;padding: 5px')
   css_match_each = request.GET.get('css_match_each', '')
   show_form = int(request.GET.get('show_form', 0))
   params = {
