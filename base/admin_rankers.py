@@ -113,12 +113,12 @@ class ResultTimeQuery(object):
     return self.query.fetch(fetch_limit)
 
 
-def _AddRankerScores(ranker_scores, user_agent_list, result_times):
+def _AddRankerScores(ranker_scores, user_agent_list, params_str, result_times):
   """Modify ranker_scores to have all result_times added for each user agent."""
   for user_agent_version in user_agent_list:
     for result_time in result_times:
-      ranker_scores.setdefault(
-          (user_agent_version, result_time.test), []).append(result_time.score)
+      ranker_key = result_time.test, user_agent_version, params_str
+      ranker_scores.setdefault(ranker_key, []).append(result_time.score)
 
 
 def _CollectScores(result_parent_query, ranker_limit, num_tests):
@@ -139,6 +139,7 @@ def _CollectScores(result_parent_query, ranker_limit, num_tests):
   result_time_query = ResultTimeQuery()
   while result_parent_query.HasNext():
     result_parent = result_parent_query.GetNext()
+    logging.info('_CollectScores: %s', result_parent.user_agent_pretty)
     user_agent_pretty = result_parent.user_agent_pretty
     if user_agent_pretty not in user_agent_versions:
       user_agent_list = UserAgent.parse_to_string_list(user_agent_pretty)
@@ -150,7 +151,8 @@ def _CollectScores(result_parent_query, ranker_limit, num_tests):
       user_agent_list = user_agent_versions[user_agent_pretty]
 
     result_times = result_time_query.fetch(MAX_TESTS, result_parent)
-    _AddRankerScores(ranker_scores, user_agent_list, result_times)
+    _AddRankerScores(
+        ranker_scores, user_agent_list, result_parent.params_str, result_times)
   return ranker_scores
 
 
@@ -163,6 +165,7 @@ def _UpdateRankers(ranker_scores, test_set, bookmark):
     bookmark:
   """
   category = test_set.category
+  logging.debug('_UpdateRankers: ranker_scores=%s', ranker_scores)
   for ranker_key, scores in ranker_scores.iteritems():
     test_key, user_agent_version, params_str = ranker_key
     try:
@@ -186,10 +189,12 @@ MAX_TESTS = 100
 def RebuildRankers(request):
   """Rebuild rankers."""
   bookmark = request.GET.get('bookmark')
+  logging.info('bookmark in: %s', (bookmark == 'None' and '"None"' or bookmark))
+  if bookmark == 'None':
+    bookmark = None
   category_index = int(request.GET.get('category_index', 0))
   total_results = int(request.GET.get('total_results', 0))
   fetch_limit = int(request.GET.get('fetch_limit', 100))
-  offset = int(request.GET.get('offset', 0))
 
   # Rankers per result_parent <= num_tests_per_category * user_agents_versions
   #            reflow rankers <= 13 * 4 <= 52
@@ -208,13 +213,16 @@ def RebuildRankers(request):
     _UpdateRankers(ranker_scores, test_set, bookmark)
 
     is_done = False
-    if not result_parent_query.HasNext():
+    bookmark = result_parent_query.GetBookmark()
+    if not bookmark:
       category_index += 1
       is_done = category_index >= len(settings.CATEGORIES)
+    logging.info('bookmark out: %s', (bookmark == 'None' and '"None"' or bookmark))
     return http.HttpResponse(simplejson.dumps({
         'is_done': is_done,
-        'bookmark': result_parent_query.GetBookmark(),
+        'bookmark': bookmark,
         'category_index': category_index,
+        'fetch_limit': fetch_limit,
         'rankers_updated': len(ranker_scores),
         'total_results': total_results + result_parent_query.GetCountUsed(),
         }))
@@ -243,6 +251,7 @@ def _MapNextRankers(request, parent_func):
     manage_dirty.UpdateDirtyController.SetPaused(False)
     datastore.Put(datastore.Entity('ranker migration', name='complete'))
   return http.HttpResponse(simplejson.dumps({
+      'fetch_limit': fetch_limit,
       'is_done': is_done,
       'total': total
       }))

@@ -19,17 +19,31 @@
 __author__ = 'slamm@google.com (Stephen Lamm)'
 
 
+import logging
 import unittest
 
 import mock_data
+import settings
 
+from django.test.client import Client
+from django.utils import simplejson
 from google.appengine.ext import db
 
+from categories import test_set_params
 from models import result_ranker
 from models.result import ResultParent
 from models.result import ResultTime
 
 from base import admin_rankers
+
+USER_AGENT_STRINGS = {
+    'Firefox 3.0.6': ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
+                      'Gecko/2009011912 Firefox/3.0.6'),
+    'Firefox 3.5': ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
+                    'Gecko/2009011912 Firefox/3.5'),
+    'Firefox 3.0.9': ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
+                      'Gecko/2009011912 Firefox/3.0.9'),
+    }
 
 class TestResultParentQuery(unittest.TestCase):
   USER_AGENT_PRETTY = 'test_admin_rankers 1.1.1'
@@ -54,7 +68,7 @@ class TestResultParentQuery(unittest.TestCase):
   def testQueryOne(self):
     test_set = mock_data.MockTestSet('el cato')
     result = ResultParent.AddResult(
-        test_set, '12.2.2.25', mock_data.GetUserAgentString(),
+        test_set, '12.2.2.25', USER_AGENT_STRINGS['Firefox 3.0.6'],
         'testDisplay=500,testVisibility=200')
     limit = 10
     bookmark = None
@@ -71,7 +85,7 @@ class TestResultParentQuery(unittest.TestCase):
     test_set = mock_data.MockTestSet('el cato')
     for index in range(3):
       result = ResultParent.AddResult(
-          test_set, '12.2.2.%s' % index, mock_data.GetUserAgentString(),
+          test_set, '12.2.2.%s' % index, USER_AGENT_STRINGS['Firefox 3.0.6'],
           'testDisplay=500,testVisibility=200')
     limit = 10
     bookmark = None
@@ -95,14 +109,13 @@ class TestResultParentQuery(unittest.TestCase):
     self.assert_(query.HasNext())
     self.assertEqual('12.2.2.2', query.GetNext().ip)
 
-
 class TestResultTimeQuery(unittest.TestCase):
 
   def testQueryBasic(self):
     query = admin_rankers.ResultTimeQuery()
     test_set = mock_data.MockTestSet('el cato')
     result = ResultParent.AddResult(
-        test_set, '12.2.2.25', mock_data.GetUserAgentString(),
+        test_set, '12.2.2.25', USER_AGENT_STRINGS['Firefox 3.0.6'],
         'testDisplay=500,testVisibility=200')
     for result_time in ResultTime.all().fetch(1000):
       result_time.dirty = False
@@ -114,7 +127,126 @@ class TestResultTimeQuery(unittest.TestCase):
 
 
 class TestRebuildRankers(unittest.TestCase):
-  pass
+
+
+  def setUp(self):
+    self.old_settings = settings.CATEGORIES
+    settings.CATEGORIES = None  # set this in each test
+    self.client = Client()
+
+  def tearDown(self):
+    settings.CATEGORIES = self.old_settings
+
+  def testRebuildBasic(self):
+    settings.CATEGORIES = ['el cato']
+    test_set = mock_data.MockTestSet('el cato')
+    result = ResultParent.AddResult(
+        test_set, '12.2.2.25', USER_AGENT_STRINGS['Firefox 3.0.6'],
+        'testDisplay=500,testVisibility=200')
+    result.increment_all_counts()
+    params = {}
+    response = self.client.get('/admin/rankers/rebuild', params)
+    self.assertEqual(200, response.status_code)
+    response_data = simplejson.loads(response.content)
+    self.assertEqual(None, response_data['bookmark'])
+    self.assertTrue(response_data['is_done'])
+    self.assertEqual(1, response_data['total_results'])
+
+    ranker = result_ranker.ResultRanker.Get(
+        'el cato', test_set.GetTest('testDisplay'), 'Firefox 3',
+        params_str=None, ranker_version='next')
+    self.assertEqual(1, ranker.TotalRankedScores())
+    self.assertEqual(500, ranker.GetMedian())
+
+  def testRebuildTwoCategories(self):
+    settings.CATEGORIES = ['el cato 1', 'el cato 2']
+    test_sets = (
+        mock_data.MockTestSet('el cato 1'),
+        mock_data.MockTestSet('el cato 2'),
+        )
+    result = ResultParent.AddResult(
+        test_sets[0], '12.2.2.25',
+        USER_AGENT_STRINGS['Firefox 3.5'], 'testDisplay=500,testVisibility=200')
+    result.increment_all_counts()
+    result = ResultParent.AddResult(
+        test_sets[1], '12.2.2.50',
+        USER_AGENT_STRINGS['Firefox 3.5'], 'testDisplay=900,testVisibility=100')
+    result.increment_all_counts()
+
+    params = {}
+    response = self.client.get('/admin/rankers/rebuild', params)
+    self.assertEqual(200, response.status_code)
+    response_data = simplejson.loads(response.content)
+    self.assertEqual(None, response_data['bookmark'])
+    self.assertFalse(response_data['is_done'])
+    self.assertEqual(1, response_data['total_results'])
+    self.assertEqual(1, response_data['category_index'])
+
+    params = {
+        'bookmark': None,
+        'category_index': 1,
+        'total_results': 1,
+        }
+    response = self.client.get('/admin/rankers/rebuild', params)
+    self.assertEqual(200, response.status_code)
+    response_data = simplejson.loads(response.content)
+    self.assertEqual(None, response_data['bookmark'])
+    self.assertTrue(response_data['is_done'])
+    self.assertEqual(2, response_data['total_results'])
+
+    ranker = result_ranker.ResultRanker.Get(
+        'el cato 1', test_sets[0].GetTest('testDisplay'), 'Firefox',
+        params_str=None, ranker_version='next')
+    self.assertEqual(1, ranker.TotalRankedScores())
+    self.assertEqual(500, ranker.GetMedian())
+
+    ranker = result_ranker.ResultRanker.Get(
+        'el cato 2', test_sets[1].GetTest('testVisibility'), 'Firefox 3.5',
+        params_str=None, ranker_version='next')
+    self.assertEqual(1, ranker.TotalRankedScores())
+    self.assertEqual(100, ranker.GetMedian())
+
+  def testRebuildResultsWithBookmarks(self):
+    settings.CATEGORIES = ['catogrey']
+    test_set = mock_data.MockTestSet(
+        'catogrey', params=test_set_params.Params('foo', 'd=c'))
+    params_str = str(test_set.default_params)
+    version_scores = (
+        ('3.0.6', (500, 0)),
+        ('3.0.9', (200, 1)),
+        ('3.0.9', (300, 2)),
+        ('3.5', (100, 3)),
+        ('3.5', (400, 4)),
+        )
+    for version, scores in version_scores:
+      result = ResultParent.AddResult(
+          test_set, '12.2.2.25', USER_AGENT_STRINGS['Firefox %s' % version],
+          'testDisplay=%s,testVisibility=%s' % scores, params_str=params_str)
+      result.increment_all_counts()
+    params = {'fetch_limit': 2}
+    request_count = 0
+    while not params.get('is_done', False):
+      response = self.client.get('/admin/rankers/rebuild', params)
+      params = simplejson.loads(response.content)
+      logging.info('params: %s', params)
+      request_count += 1
+    self.assertEqual(3, request_count) # ceiling(num_results / fetch_limit)
+
+    ranker = result_ranker.ResultRanker.Get(
+        'catogrey', test_set.GetTest('testDisplay'), 'Firefox 3.0',
+        params_str=params_str, ranker_version='next')
+    self.assertEqual(3, ranker.TotalRankedScores())
+    self.assertEqual(300, ranker.GetMedian())
+
+    ranker = result_ranker.ResultRanker.Get(
+        'catogrey', test_set.GetTest('testVisibility'), 'Firefox',
+        params_str=params_str, ranker_version='next')
+    self.assertEqual(5, ranker.TotalRankedScores())
+    self.assertEqual(2, ranker.GetMedian())
+
+
+# def AddThreeResultsWithParamsAndIncrementAllCounts():
+
 
 class TestReleaseNextRankers(unittest.TestCase):
   pass
