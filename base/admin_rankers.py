@@ -260,14 +260,14 @@ def _MapNextRankers(request, parent_func):
 def ReleaseNextRankers(request):
   def _ReleaseParent(parent):
     parent.Release()
-  _MapNextRankers(request, _ReleaseParent)
+  return _MapNextRankers(request, _ReleaseParent)
 
 
 def ResetNextRankers(request):
   def _ResetParent(parent):
     ranker = result_ranker.ResultRanker(parent)
     ranker.Reset()
-  _MapNextRankers(request, _ResetParent)
+  return _MapNextRankers(request, _ResetParent)
 
 
 def UpdateResultParents(request):

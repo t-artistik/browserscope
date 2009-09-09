@@ -36,6 +36,15 @@ RANKER_VERSIONS = ['previous', 'current', 'next']
 DEFAULT_RANKER_VERSION = 'current'
 
 
+class Error(Exception):
+  """Base exception class for result_ranker module."""
+  pass
+
+class ReleaseError(Error):
+  """Raised when a release fails."""
+  pass
+
+
 def _CheckParamsStr(params_str):
   """Check that params_str is a reasonable value.
 
@@ -153,21 +162,21 @@ class ResultRankerParent(db.Model):
 
   def Release(self):
     if self.ranker_version != 'next':
-      raise ReleaseError('Release(): ranker_version must be "next". (was %s)',
-                         self.ranker_version)
-    self.ranker_version = 'current'
-    update_parents = {'current': self}
-
+      raise ReleaseError('Release(): ranker_version must be "next". (was %s)'
+                         % self.ranker_version)
+    update_parents = {}
     grandparent_key = self.parent_key()
     query = self.all()
     query.ancestor(grandparent_key)
-    query.filter('ranker_version IN', ['current', 'previous'])
-    for parent in query.fetch(2):
+    for parent in query.fetch(3):
       if parent.ranker_version == 'previous':
         db.delete(parent)
-      else:
+      elif parent.ranker_version == 'current':
         parent.ranker_version = 'previous'
         update_parents['previous'] = parent
+    self.ranker_version = 'current'
+    update_parents['current'] = self
+    logging.info('Release: update_parents=%s', update_parents)
     for ranker_version in RANKER_VERSIONS:
       memcache_params = self.MemcacheParams(
           ranker_version, grandparent_key.name())

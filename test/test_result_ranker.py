@@ -84,6 +84,44 @@ class ResultRankerParentTest(unittest.TestCase):
     result_ranker_parent = query.get()
     self.assertEqual(None, result_ranker_parent)
 
+  def testReleaseNotNextRaises(self):
+    category = 'cat'
+    test = mock_data.MockTest('foo', 'Boo Hoo', '/poopoo', 'custom')
+    user_agent_version = 'Chrome 3'
+    params_str = None
+    ranker = result_ranker.ResultRankerParent.GetOrCreate(
+        category, test, user_agent_version, params_str,
+        ranker_version='current')
+    self.assertRaises(result_ranker.ReleaseError, ranker.Release)
+
+  def testReleaseBasic(self):
+    category = 'cat'
+    test = mock_data.MockTest('foo', 'Boo Hoo', '/poopoo', 'custom')
+    user_agent_version = 'Chrome 3'
+    params_str = None
+    ranker = None
+    for min_value, ranker_version in (
+        (3, 'previous'), (5, 'current'), (7, 'next')):
+      ranker_parent = result_ranker.ResultRankerParent.GetOrCreate(
+          category, test, user_agent_version, params_str, ranker_version)
+      ranker_parent.min_value = min_value
+      ranker_parent.put()
+    ranker_parent.Release()
+
+    previous_parent = result_ranker.ResultRankerParent.Get(
+        category, test, user_agent_version, params_str, 'previous')
+    self.assertEqual(5, previous_parent.min_value)
+
+    current_parent = result_ranker.ResultRankerParent.Get(
+        category, test, user_agent_version, params_str, 'current')
+    self.assertEqual(7, current_parent.min_value)
+
+    next_parent = result_ranker.ResultRankerParent.Get(
+        category, test, user_agent_version, params_str, 'next')
+    self.assertEqual(None, next_parent)
+
+    # TODO: test that 'previous' was deleted
+
 
 class MedianRankerTest(unittest.TestCase):
   def setUp(self):
@@ -155,6 +193,17 @@ class ResultRankerTest(unittest.TestCase):
     r.Remove(554)
     self.assertEqual([0, 555, 555, 59888],
                      [r.FindScore(x) for x in range(len(scores) - 1)])
+
+  def testReset(self):
+    mock_test = mock_data.MockTest('del', 'Del', '/del', 'pickle')
+    mock_test.min_value = 0
+    mock_test.max_value = 60000
+    r = result_ranker.ResultRanker.GetOrCreate('cat', mock_test, 'jj 6')
+    scores = [0, 554, 555, 555, 59888]
+    r.Update(scores)
+    r.Reset()
+    self.assertEqual(None, r.GetMedian())
+    self.assertEqual(0, r.TotalRankedScores())
 
 
 class RankListRankerTest(unittest.TestCase):

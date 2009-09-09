@@ -245,8 +245,55 @@ class TestRebuildRankers(unittest.TestCase):
     self.assertEqual(2, ranker.GetMedian())
 
 
-# def AddThreeResultsWithParamsAndIncrementAllCounts():
-
-
 class TestReleaseNextRankers(unittest.TestCase):
-  pass
+  def setUp(self):
+    self.client = Client()
+
+  def testReleaseNextNone(self):
+    response = self.client.get('/admin/rankers/release_next', {})
+    params = simplejson.loads(response.content)
+    self.assertEqual(200, response.status_code)
+    self.assertEqual(True, params['is_done'])
+    self.assertEqual(0, params['total'])
+
+  def testReleaseNextBasic(self):
+    test = mock_data.MockTest('foo', 'Boo Hoo', '/poopoo', 'custom')
+    user_agent_version = 'Chrome 3'
+    params_str = None
+    for score, category in ((3, 'cat 1'), (5, 'cat II'), (7, 'cat c')):
+      ranker = result_ranker.ResultRanker.GetOrCreate(
+          category, test, user_agent_version, params_str, ranker_version='next')
+      ranker.Add(score)
+    params = {}
+    response = self.client.get('/admin/rankers/release_next', {})
+    params = simplejson.loads(response.content)
+    self.assertEqual(200, response.status_code)
+    self.assertEqual(True, params['is_done'])
+    self.assertEqual(3, params['total'])
+
+    for score, category in ((3, 'cat 1'), (5, 'cat II'), (7, 'cat c')):
+      ranker = result_ranker.ResultRanker.Get(
+          category, test, user_agent_version, params_str, 'current')
+      self.assertEqual(score, ranker.GetMedian())
+
+  def testReleaseNextTwoRequests(self):
+    test = mock_data.MockTest('foo', 'Boo Hoo', '/poopoo', 'custom')
+    user_agent_version = 'Chrome 3'
+    params_str = None
+    for score, category in ((3, 'cat 1'), (5, 'cat II'), (7, 'cat c')):
+      ranker = result_ranker.ResultRanker.GetOrCreate(
+          category, test, user_agent_version, params_str, ranker_version='next')
+      ranker.Add(score)
+    params = {'fetch_limit': 2}
+    request_count = 0
+    while not params.get('is_done', False):
+      response = self.client.get('/admin/rankers/release_next', params)
+      params = simplejson.loads(response.content)
+      logging.info('params: %s', params)
+      request_count += 1
+    self.assertEqual(2, request_count)
+
+    for score, category in ((3, 'cat 1'), (5, 'cat II'), (7, 'cat c')):
+      ranker = result_ranker.ResultRanker.Get(
+          category, test, user_agent_version, params_str, 'current')
+      self.assertEqual(score, ranker.GetMedian())
