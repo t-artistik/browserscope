@@ -100,7 +100,7 @@ urlpatterns = patterns('',
   (r'^network/admin', 'categories.network.handlers.Admin'),
   (r'^network/confirm-ua', 'categories.network.handlers.ConfirmUa'),
   (r'^network/stats', 'categories.network.handlers.Stats'),
-  (r'^network/loader', 'categories.network.handlers_loader.ResultLoader'),
+  (r'^network/loader', 'categories.network.bulkloader.ResultLoader'),
 
   # Acid3 Test URLs
   (r'acid3/?$', 'categories.acid3.handlers.About'),

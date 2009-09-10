@@ -19,7 +19,6 @@
 
 This script queries MySQL and sends network scores to the GAE.
 
-TODO: Login as admin.
 """
 
 __author__ = 'slamm@google.com (Stephen Lamm)'
