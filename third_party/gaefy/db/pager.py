@@ -320,8 +320,12 @@ class PagerQuery(object):
         Returns:
           A google.appengine.ext.db.Query instance.
         """
-        query = self.__class__._query_class(self._model_class,
-            keys_only=self._keys_only)
+        #query = self.__class__._query_class(self._model_class,
+        #    keys_only=self._keys_only)
+        if issubclass(self._model_class, db.polymodel.PolyModel):
+            query = self._model_class.all()
+        else:
+            query = self._model_class.all(keys_only=self._keys_only)
 
         if self._ancestor:
             query.ancestor(self._ancestor)
@@ -351,17 +355,18 @@ class PagerQuery(object):
             # build the bookmark.
             entity = self._model_class.get(entity)
 
-        values = {}
-        for prop_name in self._bookmark_properties:
-            if prop_name == '__key__':
-                values[prop_name] = str(entity.key())
-            else:
-                prop = getattr(self._model_class, prop_name)
-                value = getattr(entity, prop_name)
-                if isinstance(prop, db.ReferenceProperty):
-                    values[prop_name] = str(value.key())
-                else:
-                    values[prop_name] = str(value)
+         values = {}
+         for prop_name in self._bookmark_properties:
+             if prop_name == '__key__':
+                 values[prop_name] = str(entity.key())
+             else:
+                 prop = getattr(self._model_class, prop_name)
+                 value = getattr(entity, prop_name)
+                 if isinstance(prop, db.ReferenceProperty):
+                     values[prop_name] = str(value.key())
+                 else:
+                     values[prop_name] = str(value)
+
         if self._first_result:
             values['_'] = str(self._first_result)
 
