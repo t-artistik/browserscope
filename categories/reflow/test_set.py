@@ -38,50 +38,9 @@ class ReflowTest(test_set_base.TestBase):
         key=key,
         name=name,
         url='%s?t=%s' % (self.TESTS_URL_PATH, key),
-        score_type='custom',
         doc=doc,
         min_value=0,
         max_value=60000)
-
-  def GetScoreAndDisplayValue(self, median, medians=None, is_uri_result=False):
-    """Returns a tuple of a value (1 to 100) and display text for the cell.
-    Args:
-      median: The test median.
-      medians: A dict of the medians for all tests indexed by key.
-      is_uri_result: Boolean, if results are in the url, i.e. home page.
-    Returns:
-      (display_text, score)  # e.g. ('1x', 95)
-      # All the scores are set to be percentages.
-    """
-    if median == None or median == '':
-      # We'll give em the benefit of the doubt here.
-      return 90, ''
-
-    median = int(median)
-    #logging.info('self.key(%s), median(%s)' % (self.key, median))
-
-    if median <= 10:
-      score = 100
-      display = '0X'
-    elif 10 < median <= 35:
-      score = 97
-      display = '¼X'
-    elif 35 < median <= 65:
-      score = 95
-      display = '½X'
-    elif 65 < median <= 85:
-      score = 93
-      display = '¾X'
-    elif 85 < median <= 110:
-      score = 90
-      display = '1X'
-    elif 110 < median <= 180:
-      score = 80
-      display = '2X'
-    else:
-      score = 60
-      display = '3X'
-    return score, display
 
 
 _TESTS = (
@@ -168,46 +127,77 @@ class ReflowTestSet(test_set_base.TestSet):
     we want to do some calculations with it later.
 
     Args:
-      results: a list of dicts like [{'key': key_1, 'score': score_1}, ...]
-
+      results: {
+          test_key_1: {'score': score_1},
+          test_key_2: {'score': score_2},
+          ...
+          }
     Returns:
-      results: a list of dicts with an expando key added.
-      [{'key': key_1, 'score': modified_score_1, 'expando': score_1}, ...]
+        { test_key_1: {'score': adjusted_score_1, 'expando': score_1},
+          test_key_2: {'score': adjusted_score_2, 'expando': score_2},
+          ...
+          }
     """
-    for result in results:
-      if result['key'] == BASELINE_TEST_NAME:
-        baseline_score = float(result['score'])
-        break
-    else:
+    if BASELINE_TEST_NAME not in results:
       raise NameError('No baseline score found in the test results')
-    #logging.info('baseline is %s' % baseline_score)
+    baseline_score = float(results[BASELINE_TEST_NAME]['score'])
 
     # Turn all values into some computed percentage of the baseline score.
     # This resets the score in the dict, but adds an expando to preserve the
     # original score's milliseconds value.
-    for result in results:
+    for result in results.values():
       result['expando'] = result['score']
-      result['score'] = int(result['score'] / baseline_score * 100)
+      result['score'] = int(100.0 * result['score'] / baseline_score)
     return results
 
+  def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
+    """Get a normalized score (1 to 10) and a value to output to the display.
+
+    Args:
+      test_key: a key for a test_set test.
+      raw_scores: a dict of raw_scores indexed by test keys.
+    Returns:
+      score, display_value
+          # score is from 1 to 10.
+          # display_value is the text for the cell.
+    """
+    raw_score = raw_scores.get(test_key, None)
+    if raw_score in (None, ''):
+      # We'll give em the benefit of the doubt here.
+      return 9, ''
+
+    raw_score = int(raw_score)
+    if raw_score <= 10:
+      score, display = 10, '0X'
+    elif raw_score <= 35:
+      score, display = 10, '¼X'
+    elif raw_score <= 65:
+      score, display = 10, '½X'
+    elif raw_score <= 85:
+      score, display = 9, '¾X'
+    elif raw_score <= 110:
+      score, display = 9, '1X'
+    elif raw_score <= 180:
+      score, display = 8, '2X'
+    else:
+      score, display = 6, '3X'
+    return score, display
 
   def GetRowScoreAndDisplayValue(self, results):
     """Get the overall score for this row of results data.
-    Args:
-      results: A dictionary that looks like:
-      {
-        'testkey1': {'score': 1-10, 'median': median, 'display': 'celltext'},
-        'testkey2': {'score': 1-10, 'median': median, 'display': 'celltext'},
-        etc...
-      }
 
+    Args:
+      results: {
+          'test_key_1': {'score': score_1, 'raw_score': raw_score_1, ...},
+          'test_key_2': {'score': score_2, 'raw_score': raw_score_2, ...},
+          ...
+          }
     Returns:
-      A tuple of (score, display)
-      Where score is a value between 1-100.
-      And display is the text for the cell.
+      score, display_value
+          # score is from 1 to 10.
+          # display_value is the text for the cell.
     """
-    #logging.info('%s GetRowScore, results:%s' % (self.category, results))
-    return (90, '')
+    return 9, ''
 
 
 TEST_SET = ReflowTestSet(

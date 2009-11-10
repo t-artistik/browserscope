@@ -36,16 +36,15 @@ def GetUserAgent():
 
 class MockTest(test_set_base.TestBase):
   """Mock test object."""
-  def __init__(self, key, name, url, score_type):
+  def __init__(self, key, name, url, min_value=0, max_value=10000):
     test_set_base.TestBase.__init__(
         self,
         key=key,
         name=name,
         url=url,
         doc='doc',
-        score_type=score_type,
-        min_value=0,
-        max_value=10000)
+        min_value=min_value,
+        max_value=max_value)
 
   def GetScoreAndDisplayValue(self, median, medians=None, is_uri_result=False):
     """Custom scoring function.
@@ -69,8 +68,10 @@ UNIT_TEST_UA = {'HTTP_USER_AGENT': 'silly-human', 'REMOTE_ADDR': '127.0.0.1'}
 
 
 TESTS = (
-    MockTest('testDisplay', 'Display Block', 'testpage', 'custom'),
-    MockTest('testVisibility', 'Visiblility None', 'testpage', 'boolean'),
+    MockTest('testDisplay', 'Display Block', 'testpage',
+             min_value=0, max_value=1000),
+    MockTest('testVisibility', 'Visiblility None', 'testpage',
+             min_value=0, max_value=1000),
     )
 
 
@@ -83,10 +84,10 @@ class MockTestSet(test_set_base.TestSet):
 
 class MockTestSetWithAdjustResults(MockTestSet):
   def AdjustResults(self, results):
-    for result in results:
+    for values in results.values():
       # Add the raw value to be expando'd and store a munged value in score.
-      result['expando'] = result['score']
-      result['score'] = int(round(result['score'] / 2))
+      values['expando'] = values['score']
+      values['score'] = int(round(values['score'] / 2))
     return results
 
 
@@ -132,11 +133,11 @@ def AddOneTestUsingAddResultWithAdjustResults():
 def AddOneTestUsingAddResultWithExpando():
   test_set = MockTestSet('category-addresult-withexpando')
   def AdjustResults(results):
-    for result in results:
-      if result['key'] == 'testDisplay':
-        result['expando'] = 20
-      elif result['key'] == 'testVisibility':
-        result['expando'] = 'testeroo'
+    for test_key, scores in results.items():
+      if test_key == 'testDisplay':
+        scores['expando'] = 20
+      elif test_key == 'testVisibility':
+        scores['expando'] = 'testeroo'
     return results
   test_set.AdjustResults = AdjustResults
   parent = ResultParent.AddResult(test_set, '12.2.2.25', GetUserAgentString(),

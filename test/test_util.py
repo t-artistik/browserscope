@@ -37,7 +37,7 @@ import settings
 
 from categories import richtext
 
-class TestUtilHandlers(unittest.TestCase):
+class TestHome(unittest.TestCase):
 
   def setUp(self):
     self.client = Client()
@@ -54,6 +54,11 @@ class TestUtilHandlers(unittest.TestCase):
     response = self.client.get('/', params, **mock_data.UNIT_TEST_UA)
     self.assertEqual(200, response.status_code)
 
+
+class TestBeacon(unittest.TestCase):
+
+  def setUp(self):
+    self.client = Client()
 
   def testBeaconWithoutCsrfToken(self):
     params = {}
@@ -86,9 +91,8 @@ class TestUtilHandlers(unittest.TestCase):
     result_parent = query.get()
     self.assertNotEqual(result_parent, None)
 
-    # Were ResultTimes created?
-    result_times = result_parent.get_result_times_as_query()
-    self.assertEqual(2, result_times.count())
+    result_times = result_parent.GetResultTimes()
+    self.assertEqual(2, len(result_times))
     self.assertEqual(1, result_times[0].score)
     self.assertEqual('testDisplay', result_times[0].test)
     self.assertEqual(2, result_times[1].score)
@@ -130,8 +134,8 @@ class TestUtilHandlers(unittest.TestCase):
     self.assertEqual('Chrome Frame (IE 7) 4.0.169', user_agent.pretty())
 
     # Were ResultTimes created?
-    result_times = result_parent.get_result_times_as_query()
-    self.assertEqual(2, result_times.count())
+    result_times = result_parent.GetResultTimes()
+    self.assertEqual(2, len(result_times))
     self.assertEqual(1, result_times[0].score)
     self.assertEqual('testDisplay', result_times[0].test)
     self.assertEqual(2, result_times[1].score)
@@ -234,18 +238,6 @@ class TestStats(unittest.TestCase):
   def testGetStatsDataWithoutMemcache(self):
     self.GetStatsData(use_memcache=False)
 
-  def testGetStatsDataWithParamsLiteralNoneRaises(self):
-    # A params_str with a None value is fine, but not a 'None' string
-    test_set = mock_data.MockTestSet('categore')
-    self.assertRaises(
-        ValueError,
-        util.GetStatsData, test_set.category, test_set.tests, ['ua1'], 'None')
-
-  def testGetStatsDataWithParamsEmptyStringRaises(self):
-    test_set = mock_data.MockTestSet('categore')
-    self.assertRaises(
-        ValueError,
-        util.GetStatsData, test_set.category, test_set.tests, ['ua1'], '')
 
 if __name__ == '__main__':
   unittest.main()

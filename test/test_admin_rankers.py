@@ -34,7 +34,7 @@ from models import result_ranker
 from models.result import ResultParent
 from models.result import ResultTime
 from models.user_agent import UserAgent
-from models.user_agent import UserAgentGroup
+#from models.user_agent import UserAgentGroup
 
 from base import admin_rankers
 
@@ -254,11 +254,11 @@ class TestRebuildUserAgents(unittest.TestCase):
   def setUp(self):
     self.client = Client()
     self.assertEqual(None, UserAgent.all().get())
-    self.assertEqual(None, UserAgentGroup.all().get())
+#    self.assertEqual(None, UserAgentGroup.all().get())
 
   def tearDown(self):
     db.delete(UserAgent.all(keys_only=True).fetch(1000))
-    db.delete(UserAgentGroup.all(keys_only=True).fetch(1000))
+#    db.delete(UserAgentGroup.all(keys_only=True).fetch(1000))
 
   def testPartsFixed(self):
     ua_string = ('Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; '
@@ -294,74 +294,74 @@ class TestRebuildUserAgents(unittest.TestCase):
     admin_rankers.RetrieveUserAgentStringList(ua)
     self.assertFalse(is_get_string_list_called)
 
-  def testUserAgentGroupUpdatedForRebuild(self):
-    chrome_ua_string = (
-        'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/530.1 '
-        '(KHTML, like Gecko) Chrome/2.0.169.1 Safari/530.1')
-    ie_ua_string = (
-        'Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; '
-        '.NET CLR 2.0.50727; .NET CLR 1.1.4322')
-    ua = UserAgent.factory(chrome_ua_string)
-    ua.update_groups()
-    user_agent_strings = UserAgentGroup.GetStrings(0)
+#   def testUserAgentGroupUpdatedForRebuild(self):
+#     chrome_ua_string = (
+#         'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/530.1 '
+#         '(KHTML, like Gecko) Chrome/2.0.169.1 Safari/530.1')
+#     ie_ua_string = (
+#         'Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; '
+#         '.NET CLR 2.0.50727; .NET CLR 1.1.4322')
+#     ua = UserAgent.factory(chrome_ua_string)
+#     ua.update_groups()
+#     user_agent_strings = UserAgentGroup.GetStrings(0)
 
-    UserAgent.factory(ie_ua_string)
-    params = {}
-    response = self.client.get('/admin/ua/rebuild', params)
-    self.assertEqual(200, response.status_code)
+#     UserAgent.factory(ie_ua_string)
+#     params = {}
+#     response = self.client.get('/admin/ua/rebuild', params)
+#     self.assertEqual(200, response.status_code)
 
-    # IE gets added to groups memcache with '_rebuild' key.
-    # Therefore, only the earlier add gets returned at this point.
-    self.assertEqual(['Chrome'], UserAgentGroup.GetStrings(0))
-    self.assertEqual(['Chrome 2'], UserAgentGroup.GetStrings(1))
-    self.assertEqual(['Chrome 2.0'], UserAgentGroup.GetStrings(2))
-    self.assertEqual(['Chrome 2.0.169'], UserAgentGroup.GetStrings(3))
+#     # IE gets added to groups memcache with '_rebuild' key.
+#     # Therefore, only the earlier add gets returned at this point.
+#     self.assertEqual(['Chrome'], UserAgentGroup.GetStrings(0))
+#     self.assertEqual(['Chrome 2'], UserAgentGroup.GetStrings(1))
+#     self.assertEqual(['Chrome 2.0'], UserAgentGroup.GetStrings(2))
+#     self.assertEqual(['Chrome 2.0.169'], UserAgentGroup.GetStrings(3))
 
-    is_done = UserAgentGroup.ReleaseRebuild()
-    self.assertTrue(is_done)
-    self.assertEqual(['Chrome', 'IE'], UserAgentGroup.GetStrings(0))
-    self.assertEqual(['Chrome 2', 'IE 8'], UserAgentGroup.GetStrings(1))
-    self.assertEqual(['Chrome 2.0', 'IE 8.0'], UserAgentGroup.GetStrings(2))
-    self.assertEqual(['Chrome 2.0.169', 'IE 8.0'], UserAgentGroup.GetStrings(3))
+#     is_done = UserAgentGroup.ReleaseRebuild()
+#     self.assertTrue(is_done)
+#     self.assertEqual(['Chrome', 'IE'], UserAgentGroup.GetStrings(0))
+#     self.assertEqual(['Chrome 2', 'IE 8'], UserAgentGroup.GetStrings(1))
+#     self.assertEqual(['Chrome 2.0', 'IE 8.0'], UserAgentGroup.GetStrings(2))
+#     self.assertEqual(['Chrome 2.0.169', 'IE 8.0'], UserAgentGroup.GetStrings(3))
 
-  def testAbandonedUserAgentGroupDeleted(self):
-    chrome_ua_string = (
-        'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/530.1 '
-        '(KHTML, like Gecko) Chrome/2.0.169.1 Safari/530.1')
-    ie_ua_string = (
-        'Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; '
-        '.NET CLR 2.0.50727; .NET CLR 1.1.4322')
-    chrome_ua = UserAgent.factory(chrome_ua_string)
-    chrome_ua.update_groups()
-    ie_ua = UserAgent.factory(ie_ua_string)
-    ie_ua.update_groups()
-    user_agent_strings = UserAgentGroup.GetStrings(0)
-    UserAgentGroup.UpdateGroups(ie_ua.get_string_list(), is_rebuild=True)
-    UserAgentGroup.ReleaseRebuild()
-    self.assertEqual(['IE 8.0'], UserAgentGroup.GetStrings(3))
-    UserAgentGroup.ClearMemcache(3)
-    self.assertEqual(['IE 8.0'], UserAgentGroup.GetStrings(3))
+#   def testAbandonedUserAgentGroupDeleted(self):
+#     chrome_ua_string = (
+#         'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) AppleWebKit/530.1 '
+#         '(KHTML, like Gecko) Chrome/2.0.169.1 Safari/530.1')
+#     ie_ua_string = (
+#         'Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; '
+#         '.NET CLR 2.0.50727; .NET CLR 1.1.4322')
+#     chrome_ua = UserAgent.factory(chrome_ua_string)
+#     chrome_ua.update_groups()
+#     ie_ua = UserAgent.factory(ie_ua_string)
+#     ie_ua.update_groups()
+#     user_agent_strings = UserAgentGroup.GetStrings(0)
+#     UserAgentGroup.UpdateGroups(ie_ua.get_string_list(), is_rebuild=True)
+#     UserAgentGroup.ReleaseRebuild()
+#     self.assertEqual(['IE 8.0'], UserAgentGroup.GetStrings(3))
+#     UserAgentGroup.ClearMemcache(3)
+#     self.assertEqual(['IE 8.0'], UserAgentGroup.GetStrings(3))
 
 
-class TestReleaseUserAgentGroups(unittest.TestCase):
-  def setUp(self):
-    self.client = Client()
-    self.old_ReleaseRebuild = UserAgentGroup.ReleaseRebuild
+# class TestReleaseUserAgentGroups(unittest.TestCase):
+#   def setUp(self):
+#     self.client = Client()
+#     self.old_ReleaseRebuild = UserAgentGroup.ReleaseRebuild
 
-  def tearDown(self):
-    UserAgentGroup.ReleaseRebuild = self.old_ReleaseRebuild
+#   def tearDown(self):
+#     UserAgentGroup.ReleaseRebuild = self.old_ReleaseRebuild
 
-  def testReleaseRebuildCalled(self):
-    # ReleaseRebuild is tested by testUserAgentGroupUpdatedForRebuild
-    self.num_release_rebuild_calls = 0
-    @classmethod
-    def MockReleaseRebuild(cls):
-      self.num_release_rebuild_calls += 1
-      return True
-    UserAgentGroup.ReleaseRebuild = MockReleaseRebuild
-    params = {}
-    response = self.client.get('/admin/ua/release', params)
-    self.assertEqual(200, response.status_code)
-    response_params = simplejson.loads(response.content)
-    self.assertTrue(response_params['is_done'])
-    self.assertEqual(1, self.num_release_rebuild_calls)
+#   def testReleaseRebuildCalled(self):
+#     # ReleaseRebuild is tested by testUserAgentGroupUpdatedForRebuild
+#     self.num_release_rebuild_calls = 0
+#     @classmethod
+#     def MockReleaseRebuild(cls):
+#       self.num_release_rebuild_calls += 1
+#       return True
+#     UserAgentGroup.ReleaseRebuild = MockReleaseRebuild
+#     params = {}
+#     response = self.client.get('/admin/ua/release', params)
+#     self.assertEqual(200, response.status_code)
+#     response_params = simplejson.loads(response.content)
+#     self.assertTrue(response_params['is_done'])
+#     self.assertEqual(1, self.num_release_rebuild_calls)

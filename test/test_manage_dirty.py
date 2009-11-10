@@ -87,8 +87,8 @@ class TestManageDirty(unittest.TestCase):
                      [x.dirty for x in result_times])
 
     ranker = result_ranker.GetRanker(
-        category, test_set.GetTest('testDisplay'), 'Firefox 3')
-    self.assertEqual((500, 1), ranker.GetMedianAndNumScores())
+        test_set.GetTest('testDisplay'), 'Firefox 3')
+    self.assertEqual(500, ranker.GetMedian())
 
   def testUpdateDirtyOverMultipleRequests(self):
     # First, create a "dirty" ResultParent
@@ -118,8 +118,8 @@ class TestManageDirty(unittest.TestCase):
                      [x.dirty for x in result_times])
 
     ranker = result_ranker.GetRanker(
-        category, test_set.GetTest('testDisplay'), 'Firefox 3')
-    self.assertEqual((500, 1), ranker.GetMedianAndNumScores())
+        test_set.GetTest('testDisplay'), 'Firefox 3')
+    self.assertEqual(500, ranker.GetMedian())
 
 if __name__ == '__main__':
   unittest.main()

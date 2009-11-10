@@ -291,7 +291,7 @@ class JsonTestResult(unittest.TestResult):
             'failures': self._list(self.failures),
             }
 
-        stream.write(django.utils.simplejson.dumps(result).replace('},', '},\n'))
+        stream.write(django.utils.simplejson.dumps(result))
 
     def _list(self, list):
         dict = []
@@ -366,9 +366,10 @@ def _create_suite(package_name, test_name, test_dir):
         if suite.countTestCases() == 0:
             raise Exception("'%s' is not found or does not contain any tests." %  \
                             (test_name or package_name or 'local directory: \"%s\"' % _LOCAL_TEST_DIR))
-    except Exception, e:
-        print e
-        error = str(e)
+    except Exception:
+        import traceback
+        error = traceback.format_exc()
+        print error
         _log_error(error)
 
     return (suite, error)
@@ -378,6 +379,10 @@ def _load_default_test_modules(test_dir):
     if not test_dir in sys.path:
         sys.path.append(test_dir)
     module_names = [mf[0:-3] for mf in os.listdir(test_dir) if mf.endswith(".py")]
+    emacs_temp_files = [mf for mf in module_names if mf.startswith(".#")]
+    if emacs_temp_files:
+        raise Exception("Found emacs temporary files (indicates unsaved files): %s" %
+                        ", ".join(["%s.py" % x for x in emacs_temp_files]))
     return [reload(__import__(name)) for name in module_names]
 
 
@@ -456,16 +461,23 @@ _MAIN_PAGE_CONTENT = """
 <html>
 <head>
     <style>
-        body {font-family:arial,sans-serif; text-align:center}
-        #title {font-family:"Times New Roman","Times Roman",TimesNR,times,serif; font-size:28px; font-weight:bold; text-align:center}
-        #version {font-size:87%%; text-align:center;}
-        #weblink {font-style:italic; text-align:center; padding-top:7px; padding-bottom:7px}
-        #results {padding-top:20px; margin:0pt auto; text-align:center; font-weight:bold}
+        body {font-family:arial,sans-serif}
+        #title {font-family:"Times New Roman","Times Roman",TimesNR,times,serif; font-size:28px; font-weight:bold}
+        #version {font-size:87%%}
+        #weblink {font-style:italic; padding-top:7px; padding-bottom:7px}
+        #results {padding-top:20px; margin:0pt; font-weight:bold;}
         #testindicator {width:750px; height:16px; border-style:solid; border-width:2px 1px 1px 2px; background-color:#f8f8f8;}
-        #footerarea {text-align:center; font-size:83%%; padding-top:25px}
+        #footerarea {font-size:83%%; padding-top:25px}
         #errorarea {padding-top:25px}
-        .error {border-color: #c3d9ff; border-style: solid; border-width: 2px 1px 2px 1px; width:750px; padding:1px; margin:0pt auto; text-align:left}
+        .error {border-color: #c3d9ff; border-style: solid; border-width: 2px 1px 2px 1px; padding:1px; margin:0pt; text-align:left}
         .errtitle {background-color:#c3d9ff; font-weight:bold}
+        pre {
+        white-space: pre-wrap;       /* css-3 */
+        white-space: -moz-pre-wrap;  /* Mozilla, since 1999 */
+        white-space: -pre-wrap;      /* Opera 4-6 */
+        white-space: -o-pre-wrap;    /* Opera 7 */
+        word-wrap: break-word;       /* Internet Explorer 5.5+ */
+        }
     </style>
     <script language="javascript" type="text/javascript">
         var testsToRun = %s;

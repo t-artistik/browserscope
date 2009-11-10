@@ -38,7 +38,7 @@ from base import util
 from models.result import ResultParent
 from models.result import ResultTime
 from models.user_agent import UserAgent
-from models.user_agent import UserAgentGroup
+#from models.user_agent import UserAgentGroup
 
 from django import http
 from django.utils import simplejson
@@ -142,12 +142,12 @@ def Stats(request):
   return util.Render(request, 'admin/stats.html', params)
 
 
-@decorators.admin_required
-def GetUserAgentGroupStrings(request):
-  version_level = request.GET.get('v', 'top')
-  UserAgentGroup.ClearMemcache(version_level)
-  ua_strings = UserAgentGroup.GetStrings(version_level)
-  return http.HttpResponse('<br>'.join(ua_strings))
+# @decorators.admin_required
+# def GetUserAgentGroupStrings(request):
+#   version_level = request.GET.get('v', 'top')
+#   UserAgentGroup.ClearMemcache(version_level)
+#   ua_strings = UserAgentGroup.GetStrings(version_level)
+#   return http.HttpResponse('<br>'.join(ua_strings))
 
 @decorators.admin_required
 def WTF(request):

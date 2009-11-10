@@ -32,7 +32,7 @@ from google.appengine.ext import db
 from models.result import ResultParent
 from models.result import ResultTime
 from models.user_agent import UserAgent
-from models.user_agent import UserAgentGroup
+#from models.user_agent import UserAgentGroup
 
 from base import admin
 
@@ -74,7 +74,7 @@ class TestDataDump(unittest.TestCase):
     db.delete(ResultParent.all(keys_only=True).fetch(1000))
     db.delete(ResultTime.all(keys_only=True).fetch(1000))
     db.delete(UserAgent.all(keys_only=True).fetch(1000))
-    db.delete(UserAgentGroup.all(keys_only=True).fetch(1000))
+#    db.delete(UserAgentGroup.all(keys_only=True).fetch(1000))
 
   def testNoParamsGivesError(self):
     params = {}

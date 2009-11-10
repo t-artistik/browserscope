@@ -16,275 +16,156 @@
 
 __author__ = 'slamm@google.com (Stephen Lamm)'
 
+import bisect
 import hashlib
 import logging
 
-from google.appengine.api import datastore
-from google.appengine.api import datastore_errors
-from google.appengine.api import datastore_types
-from google.appengine.api import memcache
 from google.appengine.ext import db
 
-from models import result_ranker_storage
 
-import score_ranker
+class CountRanker(db.Model):
+  """Maintain a list of score counts.
 
-RANKER_VERSIONS = ['previous', 'current', 'next']
-DEFAULT_RANKER_VERSION = 'current'
-
-
-class Error(Exception):
-  """Base exception class for result_ranker module."""
-  pass
-
-class ReleaseError(Error):
-  """Raised when a release fails."""
-  pass
-
-
-def _CheckParamsStr(params_str):
-  """Check that params_str is a reasonable value.
-
-  Raises:
-    ValueError if params_str is a 'None' string or an empty string.
-    (A None value is okay.)
+  The minimum score is assumed to be 0.
+  The maximum score must be MAX_SCORE or less.
   """
-  if params_str in ('None', ''):
-    raise ValueError
+  MIN_SCORE = 0
+  MAX_SCORE = 100
 
-class ResultRankerGrandparent(db.Model):
-  """Collect together ResultRankerParent's that represent the same data slice.
+  counts = db.ListProperty(long, indexed=False)
 
-  This allows us to do things such as rebuilding a ranker.
-  """
-  category = db.StringProperty()
-  test_key = db.StringProperty()
-  user_agent_version = db.StringProperty()
-  params_str = db.StringProperty(default=None)
+  def GetMedian(self):
+    median = None
+    num_scores = sum(self.counts)
+    median_rank = num_scores / 2
+    index = 0
+    for score, count in enumerate(self.counts):
+      median = score
+      index += count
+      if median_rank < index:
+        break
+    return median
 
-  @classmethod
-  def KeyName(cls, category, test_key, user_agent_version, params_str):
-    if params_str:
-      params_hash = hashlib.md5(params_str).hexdigest()
-      return '_'.join((category, test_key, user_agent_version, params_hash))
-    else:
-      return '_'.join((category, test_key, user_agent_version))
+  def Add(self, score):
+    if score < self.MIN_SCORE:
+      score = self.MIN_SCORE
+      logging.warn('CountRanker(key_name=%s) value out of range (%s to %s): %s',
+                   self.key().name(), self.MIN_SCORE, self.MAX_SCORE, score)
+    elif score > self.MAX_SCORE:
+      score = self.MAX_SCORE
+      logging.warn('CountRanker(key_name=%s) value out of range (%s to %s): %s',
+                   self.key().name(), self.MIN_SCORE, self.MAX_SCORE, score)
+    slots_needed = score - len(self.counts) + 1
+    if slots_needed > 0:
+      self.counts.extend([0] * slots_needed)
+    self.counts[score] += 1
+    self.put()
 
-  @classmethod
-  def Get(cls, category, test_key, user_agent_version, params_str):
-    _CheckParamsStr(params_str)
-    return cls.get_by_key_name(cls.KeyName(
-        category, test_key, user_agent_version, params_str))
-
-  @classmethod
-  def GetOrCreate(cls, category, test_key, user_agent_version, params_str):
-    _CheckParamsStr(params_str)
-    return cls.get_or_insert(
-        cls.KeyName(category, test_key, user_agent_version, params_str),
-        category=category,
-        test_key=test_key,
-        user_agent_version=user_agent_version,
-        params_str=params_str)
-
-
-class ResultRankerParent(db.Model):
-  """ResultRankerParent is the parent to all the ranker nodes."""
-  MEMCACHE_NAMESPACE = 'result_ranker_parent'
-
-  ranker_version = db.StringProperty(
-      required=True,
-      choices=set(RANKER_VERSIONS),
-      default=DEFAULT_RANKER_VERSION)
-  min_value = db.IntegerProperty()
-  max_value = db.IntegerProperty()
-  branching_factor = db.IntegerProperty()
-
-  @classmethod
-  def MemcacheParams(cls, ranker_version, grandparent_key_name):
-    key = '%s_%s' % (ranker_version, grandparent_key_name)
-    return {'key': key, 'namespace': cls.MEMCACHE_NAMESPACE}
-
-  @classmethod
-  def Get(cls, category, test, user_agent_version, params_str,
-          ranker_version=DEFAULT_RANKER_VERSION):
-    _CheckParamsStr(params_str)
-    grandparent_key_name = ResultRankerGrandparent.KeyName(
-        category, test.key, user_agent_version, params_str)
-    memcache_params = cls.MemcacheParams(ranker_version, grandparent_key_name)
-    result_ranker_parent = memcache.get(**memcache_params)
-    if not result_ranker_parent:
-      grandparent = ResultRankerGrandparent.Get(
-          category, test.key, user_agent_version, params_str)
-      if grandparent:
-        query = ResultRankerParent.all()
-        query.ancestor(grandparent)
-        query.filter('ranker_version =', ranker_version)
-        result_ranker_parent = query.get()
-        if result_ranker_parent:
-          memcache.add(value=result_ranker_parent, **memcache_params)
-    return result_ranker_parent
-
-  @classmethod
-  def GetOrCreate(cls, category, test, user_agent_version, params_str,
-                  ranker_version=DEFAULT_RANKER_VERSION):
-    _CheckParamsStr(params_str)
-    grandparent_key_name = ResultRankerGrandparent.KeyName(
-        category, test.key, user_agent_version, params_str)
-    memcache_params = cls.MemcacheParams(ranker_version, grandparent_key_name)
-    result_ranker_parent = memcache.get(**memcache_params)
-    if not result_ranker_parent:
-      grandparent = ResultRankerGrandparent.GetOrCreate(
-          category, test.key, user_agent_version, params_str)
-      query = ResultRankerParent.all()
-      query.ancestor(grandparent)
-      query.filter('ranker_version =', ranker_version)
-      result_ranker_parent = query.get()
-      is_newly_created = False
-      if not result_ranker_parent:
-        is_newly_created = True
-        result_ranker_parent = cls(
-            parent=grandparent,
-            ranker_version=ranker_version,
-            min_value=test.min_value,
-            max_value=test.max_value,
-            branching_factor=score_ranker.GetShallowBranchingFactor(
-                test.min_value, test.max_value))
-        result_ranker_parent.put()
-      if not memcache.add(value=result_ranker_parent, **memcache_params):
-        if is_newly_created:
-          # Another process created the parent first. Use that instead.
-          result_ranker_parent.delete()
-        result_ranker_parent = memcache.get(**memcache_params)
-    return result_ranker_parent
-
-  def Release(self):
-    if self.ranker_version != 'next':
-      raise ReleaseError('Release(): ranker_version must be "next". (was %s)'
-                         % self.ranker_version)
-    update_parents = {}
-    grandparent_key = self.parent_key()
-    query = self.all()
-    query.ancestor(grandparent_key)
-    for parent in query.fetch(3):
-      if parent.ranker_version == 'previous':
-        db.delete(parent)
-      elif parent.ranker_version == 'current':
-        parent.ranker_version = 'previous'
-        update_parents['previous'] = parent
-    self.ranker_version = 'current'
-    update_parents['current'] = self
-    logging.info('Release: update_parents=%s', update_parents)
-    for ranker_version in RANKER_VERSIONS:
-      memcache_params = self.MemcacheParams(
-          ranker_version, grandparent_key.name())
-      if ranker_version in update_parents:
-        memcache.set(value=update_parents[ranker_version], **memcache_params)
-      else:
-        memcache.delete(**memcache_params)
-    db.run_in_transaction(db.put, update_parents.values())
+  def SetCounts(self, counts):
+    self.counts = counts
+    self.put()
 
 
-  def delete(self):
-    grandparent_key = self.parent_key()
-    memcache_params = self.MemcacheParams(
-        self.ranker_version, grandparent_key.name())
-    memcache.delete(**memcache_params)
-    db.Model.delete(self)
-    query = self.__class__.all().ancestor(grandparent_key)
-    if query.count() == 0:
-      db.delete(grandparent_key)
+class LastNRanker(db.Model):
+  """Approximate the median by keeping the last MAX_SCORES scores."""
+  MAX_NUM_SCORES = 100
 
+  scores = db.ListProperty(long, indexed=False)
 
-class ResultRanker(score_ranker.Ranker):
-
-  def __init__(self, ranker_parent):
-    """Initialize a ResultRanker.
-
-    Args:
-      ranker_parent: a ResultRankerParent instance.
-    """
-    self.ranker_parent = ranker_parent
-    self.storage = result_ranker_storage.ScoreDatastore(
-        self.ranker_parent.key())
-    score_ranker.Ranker.__init__(
-        self,
-        self.storage,
-        self.ranker_parent.min_value,
-        self.ranker_parent.max_value,
-        self.ranker_parent.branching_factor)
-
-  @classmethod
-  def Get(
-      cls, category, test, user_agent_version, params_str=None,
-      ranker_version=DEFAULT_RANKER_VERSION, is_created_if_needed=False):
-    _CheckParamsStr(params_str)
-    ranker_parent = ResultRankerParent.Get(
-        category, test, user_agent_version, params_str, ranker_version)
-    if ranker_parent:
-      return cls(ranker_parent)
+  def GetMedian(self):
+    """Return the median of the last N scores."""
+    num_scores = len(self.scores)
+    if num_scores:
+      return self.scores[num_scores / 2]
     else:
       return None
 
-  @classmethod
-  def GetOrCreate(
-      cls, category, test, user_agent_version, params_str=None,
-      ranker_version=DEFAULT_RANKER_VERSION):
-    """Return an existing or new ranker.
+  def Add(self, score):
+    """Add a score into the last N scores.
 
-    Args:
-      category: a test category string (e.g. 'network' or 'reflow')
-      test: a test instance (e.g. NetworkTest or ReflowTest)
-      user_agent_version: browser name and version (e.g. 'Safari 4.0' or 'IE 8')
-      params_str: a string representing parameters to add to the key
-      ranker_version: either 'previous', 'current', or 'next'
-    Returns:
-      a Ranker instance
+    If needed, drops the score that is furthest away from the given score.
     """
-    _CheckParamsStr(params_str)
-    ranker_parent = ResultRankerParent.GetOrCreate(
-        category, test, user_agent_version, params_str, ranker_version)
-    return cls(ranker_parent)
+    num_scores = len(self.scores)
+    if num_scores < self.MAX_NUM_SCORES:
+      bisect.insort(self.scores, score)
+    else:
+      index_left = bisect.bisect_left(self.scores, score)
+      index_right = bisect.bisect_right(self.scores, score)
+      index_center = index_left + (index_right - index_left) / 2
+      self.scores.insert(index_left, score)
+      if index_center < num_scores / 2:
+        self.scores.pop()
+      else:
+        self.scores.pop(0)
+    self.put()
 
-  def Delete(self):
-    """Remove the ranker."""
-    self.Reset()
-    self.ranker_parent.delete()
-
-  def Reset(self):
-    """Remove the ranker."""
-    self.storage.DeleteAll()
-
-  def GetMedianAndNumScores(self):
-    return self.FindScoreAndNumScores(percentile=50)
+  def SetScores(self, scores):
+    self.scores = scores
+    self.put()
 
 
-def GetRanker(category, test, user_agent_version, params_str=None,
-              ranker_version=DEFAULT_RANKER_VERSION):
+def RankerKeyName(category, test_key, browser, params_str=None):
+  if params_str:
+    params_hash = hashlib.md5(params_str).hexdigest()
+    return '_'.join((category, test_key, browser, params_hash))
+  else:
+    return '_'.join((category, test_key, browser))
+
+
+def RankerClass(min_value, max_value):
+  if min_value >= 0 and max_value <= CountRanker.MAX_SCORE:
+    return CountRanker
+  else:
+    return LastNRanker
+
+
+def GetRanker(test, browser, params_str=None):
   """Get a ranker that matches the given args.
 
   Args:
-    category: a category string like 'network' or 'reflow'.
     test: an instance of a test_set_base.TestBase derived class.
-    user_agent_version: a string like 'Firefox 3' or 'Chrome 2.0.156'.
+    browser: a string like 'Firefox 3' or 'Chrome 2.0.156'.
     params_str: a string representation of test_set_params.Params.
   Returns:
-    an instance of a MedianRanker derived class (None if not found).
+    an instance of a RankerBase derived class (None if not found).
   """
-  return ResultRanker.Get(
-      category, test, user_agent_version, params_str, ranker_version)
+  return GetRankers([test], browser, params_str)[0]
 
 
-def GetOrCreateRanker(category, test, user_agent_version, params_str=None,
-                      ranker_version=DEFAULT_RANKER_VERSION):
+def GetRankers(tests, browser, params_str=None):
+  """Get a ranker that matches the given args.
+
+  Args:
+    tests: a list of instances derived from test_set_base.TestBase.
+    browser: a string like 'Firefox 3' or 'Chrome 2.0.156'.
+    params_str: a string representation of test_set_params.Params.
+  Returns:
+    a list of instances derived from RankerBase (None values when not found).
+  """
+  rankers = [None] * len(tests)
+  ranker_specs = {}
+  for index, test in enumerate(tests):
+    ranker_class = RankerClass(test.min_value, test.max_value)
+    ranker_specs.setdefault(ranker_class, ([], []))
+    ranker_specs[ranker_class][0].append(index)
+    ranker_specs[ranker_class][1].append(RankerKeyName(
+        test.test_set.category, test.key, browser, params_str))
+  for ranker_class, (indexes, key_names) in ranker_specs.items():
+    for index, ranker in zip(indexes, ranker_class.get_by_key_name(key_names)):
+      rankers[index] = ranker
+  return rankers
+
+
+def GetOrCreateRanker(test, browser, params_str=None):
   """Get or create a ranker that matches the given args.
 
   Args:
-    category: a category string like 'network' or 'reflow'.
     test: an instance of a test_set_base.TestBase derived class.
-    user_agent_version: a string like 'Firefox 3' or 'Chrome 2.0.156'.
+    browser: a string like 'Firefox 3' or 'Chrome 2.0.156'.
     params_str: a string representation of test_set_params.Params.
   Returns:
-    an instance of a MedianRanker derived class (None if not found).
+    an instance of a RankerBase derived class.
   """
-  return ResultRanker.GetOrCreate(
-      category, test, user_agent_version, params_str, ranker_version)
+  ranker_class = RankerClass(test.min_value, test.max_value)
+  return ranker_class.get_or_insert(
+      RankerKeyName(test.test_set.category, test.key, browser, params_str))

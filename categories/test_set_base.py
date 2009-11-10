@@ -46,39 +46,30 @@ class ParseResultsValueError(Error):
 
 
 class TestBase(object):
-  def __init__(self, key, name, url, score_type, doc, min_value, max_value,
-               test_set=None, cell_align='right'):
+  def __init__(self, key, name, url, doc, min_value, max_value,
+               test_set=None, is_hidden_stat=False, cell_align='right'):
     self.key = key
     self.name = name
     self.url = url
-    self.score_type = score_type
     self.doc = doc
     self.min_value = min_value
     self.max_value = max_value
     self.test_set = test_set
+    self.is_hidden_stat = is_hidden_stat
     self.cell_align = cell_align
+    if (min_value, max_value) == (0, 1):
+      self.score_type = 'boolean'
+    else:
+      self.score_type = 'custom'
 
-  def GetRanker(self, user_agent_version, params_str):
-    return result_ranker.GetRanker(
-        self.test_set.category, self, user_agent_version, params_str)
+  def GetRanker(self, browser, params_str=None):
+    return result_ranker.GetRanker(self, browser, params_str)
 
-  def GetOrCreateRanker(self, user_agent_version, params_str):
-    return result_ranker.GetOrCreateRanker(
-        self.test_set.category, self, user_agent_version, params_str)
+  def GetOrCreateRanker(self, browser, params_str=None):
+    return result_ranker.GetOrCreateRanker(self, browser, params_str)
 
-  def GetScoreAndDisplayValue(self, median, medians=None, is_uri_result=False):
-    """Custom scoring function.
-
-    Args:
-      median: The actual median for this test from all scores.
-      medians: A dict of the medians for all tests indexed by key.
-      is_uri_result: Boolean, if results are in the url, i.e. home page.
-    Returns:
-      (score, display)
-      Where score is a value between 1-100.
-      And display is the text for the cell.
-    """
-    return (median, median)
+  def IsVisible(self):
+    return not hasattr(self, 'is_hidden_stat') or not self.is_hidden_stat
 
 
 class TestSet(object):
@@ -116,40 +107,54 @@ class TestSet(object):
     Returns:
       test: A TestBase instance or None
     """
-    if self._test_dict.has_key(test_key):
-      test = self._test_dict[test_key]
-    else:
-      test = None
-    return test
+    return self._test_dict.get(test_key, None)
 
-  def GetResults(self, results_str, is_import=False):
+  def IsVisibleTest(self, test_key):
+    test = self.GetTest(test_key)
+    if test:
+      return test.IsVisible()
+    else:
+      return False
+
+  def IsBooleanTest(self, test_key):
+    """Return true if the test_key represents a boolean test.
+
+    Args:
+      test_key: a key for a test_set test.
+    Returns:
+      True iff test indexed by test_key has a boolean score type.
+    """
+    return self.GetTest(test_key).score_type == 'boolean'
+
+  def GetResults(self, results_str, ignore_key_errors=False):
     """Parses a results string.
 
     Args:
-      results_str: a string like 'test1=time1,test2=time2,[...]'.
-      is_import: if true, skip checking keys to list of tests
+      results_str: a string like 'test_1=score_1,test_2=score_2, ...'.
+      ignore_key_errors: if true, skip checking keys with list of tests
     Returns:
-      [{'key': test1, 'score': time1}, {'key': test2, 'score': time2}]
+      {test_1: {'score': score_1}, test_2: {'score': score_2}, ...}
     """
-    parsed_results = self.ParseResults(results_str, is_import)
+    parsed_results = self.ParseResults(
+        results_str, ignore_key_errors=ignore_key_errors)
     return self.AdjustResults(parsed_results)
 
-  def ParseResults(self, results_str, is_import_or_uri_results_str=False):
+  def ParseResults(self, results_str, ignore_key_errors=False):
     """Parses a results string.
 
     Args:
-      results_str: a string like 'test1=time1,test2=time2,[...]'.
-      is_import_or_uri_results_str: Skips the key test.
+      results_str: a string like 'test_1=score_1,test_2=score_2, ...'.
+      ignore_key_errors: if true, skip checking keys with list of tests
     Returns:
-      [{'key': test1, 'score': time1}, {'key': test2, 'score': time2}]
+      {test_1: {'score': score_1}, test_2: {'score': score_2}, ...}
     """
     test_scores = [x.split('=') for x in str(results_str).split(',')]
     test_keys = sorted([x[0] for x in test_scores])
-    if not is_import_or_uri_results_str and self._test_keys != test_keys:
+    if not ignore_key_errors and self._test_keys != test_keys:
       raise ParseResultsKeyError(expected=self._test_keys, actual=test_keys)
     try:
-      parsed_results = [{'key': key, 'score': int(score)}
-                        for key, score in test_scores]
+      parsed_results = dict([(key, {'score': int(score)})
+                             for key, score in test_scores])
     except ValueError:
       raise ParseResultsValueError
     return parsed_results
@@ -160,28 +165,122 @@ class TestSet(object):
     Left to implementations to overload.
 
     Args:
-      results: a list of dicts like [{'key': key_1, 'score': score_1}, ...]
+      results: a list of dicts like {key_1: {'score': score_1}, ...}
     Returns:
       a list of modified dicts like the following:
-      [{'key': key_1, 'score': modified_score_1}, ...]
+      {key_1: {'score': modified_score_1, extra_key: extra_value}, ...}
 
     """
     return results
 
+  def GetRankers(self, browser, tests=None):
+    """Return the rankers for the given browser and tests (optional).
+
+    Args:
+      browser: a browser/version string like 'Firefox 3.0'.
+      tests: a list of test instances
+    Returns:
+      [(test_1, ranker_1), (test_2, ranker_2), ...]
+    """
+    tests = self.tests
+    params_str = (test_set.default_params and
+                  str(test_set.default_params) or None)
+    return zip(tests, result_ranker.GetRankers(tests, browser, params_str))
+
+  def GetMedians(self, browser):
+    """Return the raw scores for a given browser.
+
+    Args:
+      browser: a browser/version string like 'Firefox 3.0'.
+    Returns:
+      {test_key_1: median_1, test_key_2: median_2, ...}
+    """
+    return dict((test.key, ranker.GetMedian())
+                for test, ranker in self.GetRankers(browser) if ranker)
+
+  def GetStats(self, raw_scores):
+    """Get normalized scores, display values including summary values.
+
+    Args:
+      raw_scores: {test_key_1: raw_score_1, test_key_2: raw_score_2, ...}
+    Returns:
+      {
+          'summary_score': summary_score,      # value is from 1 to 10
+          'summary_display': summary_display,  # text to present
+          'results': {
+              test_key_1: {
+                  'raw_score': raw_score_1,
+                  'score': score_1,
+                  'display': display_1,
+                  'expando': expando_1,  # optional
+              },
+              test_key_2: {...},
+              },
+          }
+      }
+    """
+    results = {}
+    for test_key, raw_score in raw_scores.items():
+      if raw_score is None:
+        score, display = 0, ''
+      elif self.IsVisibleTest(test_key):
+        if self.IsBooleanTest(test_key):
+          if raw_score:
+            score, display = 10, settings.STATS_SCORE_TRUE
+          else:
+            score, display = 1, settings.STATS_SCORE_FALSE
+        else:
+          score, display = self.GetTestScoreAndDisplayValue(
+              test_key, raw_scores)
+        results[test_key] = {
+            'raw_score': raw_score,
+            'score': score,
+            'display': display,
+            }
+    summary_score, summary_display = self.GetRowScoreAndDisplayValue(results)
+    stats = {
+        'summary_score': summary_score,
+        'summary_display': summary_display,
+        'results': results,
+        }
+    return stats
+
+  def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
+    """Get a normalized score (1 to 10) and a value to output to the display.
+
+    Args:
+      test_key: a key for a test_set test.
+      raw_scores: a dict of raw_scores indexed by test keys.
+    Returns:
+      score, display_value
+          # score is from 1 to 10.
+          # display_value is the text for the cell.
+    """
+    raise NotImplementedError
+
   def GetRowScoreAndDisplayValue(self, results):
     """Get the overall score for this row of results data.
-    Args:
-      results: A dictionary that looks like:
-      {
-        'testkey1': {'score': 1-10, 'median': median, 'display': 'celltext'},
-        'testkey2': {'score': 1-10, 'median': median, 'display': 'celltext'},
-        etc...
-      }
 
+    Args:
+      results: {
+          'test_key_1': {'score': score_1, 'raw_score': raw_score_1, ...},
+          'test_key_2': {'score': score_2, 'raw_score': raw_score_2, ...},
+          ...
+          }
     Returns:
-      A tuple of (score, display)
-      Where score is a value between 1-100.
-      And display is the text for the cell.
+      score, display_value
+          # score is from 1 to 10.
+          # display_value is the text for the cell.
     """
-    #logging.info('%s GetRowScore, results:%s' % (self.category, results))
-    return 90, ''
+    raise NotImplementedError
+
+  @staticmethod
+  def Convert100to10Base(value):
+    """Convert a value from 1-100 range to 1-10 range.
+
+    Args:
+      value: an integer from 1 to 100.
+    Returns:
+      an integer from 1 to 10
+    """
+    return max(1, (int(value) + 5) / 10)

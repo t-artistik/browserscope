@@ -239,7 +239,7 @@ def ParseArgs(argv):
   for option_key, option_value in options:
     if option_key in ('-h', '--host'):
       host = option_value
-    elif option_key in ('-u', '--gae_user'):
+    elif option_key in ('-e', '--email'):
       gae_user = option_value
     elif option_key in ('-p', '--params'):
       params = option_value

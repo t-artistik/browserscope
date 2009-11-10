@@ -47,6 +47,8 @@ urlpatterns = patterns('',
   (r'^admin/ua/release$', 'base.admin_rankers.ReleaseUserAgentGroups'),
   (r'^admin/ua/reset$', 'base.admin_rankers.ResetUserAgentGroups'),
   (r'^admin/data_dump', 'base.admin.DataDump'),
+  (r'^admin/serialization_test', 'base.serialization_test.GraphIt'),
+  (r'^admin/ua_test', 'base.ua.ParseTest'),
 
   # Cron admin scripts
   (r'^cron/user_agent_group$', 'base.cron.UserAgentGroup'),

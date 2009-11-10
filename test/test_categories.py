@@ -86,20 +86,16 @@ class TestCanBeacon(unittest.TestCase):
       test_set = all_test_sets.GetTestSet(category)
       csrf_token = self.client.get('/get_csrf').content
       # Constructs a reasonably random result set
-      results = []
-      for test in test_set.tests:
-        if test.score_type == 'boolean':
-          score = random.randrange(0, 1)
-        elif test.score_type == 'custom':
-          score = random.randrange(5, 2000)
-        results.append('%s=%s' % (test.key, score))
-
+      results = [
+          '%s=%s' % (test.key, random.randrange(test.min_value, test.max_value))
+          for test in test_set.tests]
       params = {
         'category': category,
         'results': ','.join(results),
         'csrf_token': csrf_token,
       }
       response = self.client.get('/beacon', params, **mock_data.UNIT_TEST_UA)
+      self.assertEqual('', response.content)
       self.assertEqual(204, response.status_code)
 
       # Did a ResultParent get created?
@@ -109,6 +105,5 @@ class TestCanBeacon(unittest.TestCase):
       self.assertNotEqual(result_parent, None)
 
       # Were the right number of ResultTimes created?
-      result_times = result_parent.get_result_times()
+      result_times = result_parent.GetResultTimes()
       self.assertEqual(len(test_set.tests), len(result_times))
-

@@ -36,7 +36,7 @@ from categories import test_set_params
 from models import result_ranker
 from models.result import ResultParent
 from models.user_agent import UserAgent
-from models.user_agent import UserAgentGroup
+#from models.user_agent import UserAgentGroup
 
 from third_party.gaefy.db import pager
 
@@ -340,9 +340,9 @@ def RebuildUserAgents(request):
     total_scanned += 1
     CacheUserAgentStringList(ua)
   db.put(updated_uas)
-  for parts in parts_set:
-    user_agent_list = UserAgent.parts_to_string_list(*parts)
-    UserAgentGroup.UpdateGroups(user_agent_list, is_rebuild=True)
+  #  for parts in parts_set:
+  #    user_agent_list = UserAgent.parts_to_string_list(*parts)
+  #    UserAgentGroup.UpdateGroups(user_agent_list, is_rebuild=True)
   return http.HttpResponse(simplejson.dumps({
       'is_done': next_bookmark is None,
       'bookmark': next_bookmark,
@@ -376,14 +376,14 @@ def RetrieveUserAgentStringList(ua):
   return string_list
 
 
-def ReleaseUserAgentGroups(request):
-  is_done = UserAgentGroup.ReleaseRebuild()
-  params = {'is_done': is_done}
-  return http.HttpResponse(simplejson.dumps(params))
+# def ReleaseUserAgentGroups(request):
+#   is_done = UserAgentGroup.ReleaseRebuild()
+#   params = {'is_done': is_done}
+#   return http.HttpResponse(simplejson.dumps(params))
 
 
-def ResetUserAgentGroups(request):
-  for version_level in range(4):
-    UserAgentGroup.ClearMemcache(version_level, is_rebuild=True)
-  params = {'is_done': True}
-  return http.HttpResponse(simplejson.dumps(params))
+# def ResetUserAgentGroups(request):
+#   for version_level in range(4):
+#     UserAgentGroup.ClearMemcache(version_level, is_rebuild=True)
+#   params = {'is_done': True}
+#   return http.HttpResponse(simplejson.dumps(params))

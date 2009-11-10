@@ -76,7 +76,7 @@ CREATE_TEMP_SCORES_SQL = """
     LEFT JOIN user_agent USING (user_agent_key)
     ;"""
 
-TEMP_SCORE_SQL = """
+TEMP_SCORES_SQL = """
     SELECT %(columns)s
     FROM temp_scores
     WHERE
@@ -123,7 +123,7 @@ def DumpScores(db):
             'test': test.key,
             'family': family,
             }
-        sql = TEMP_SCORE_SQL % {
+        sql = TEMP_SCORES_SQL % {
             'columns': 'count(*)',
             'v_clauses': v_clauses,
             'limit_clause': '',
@@ -134,7 +134,7 @@ def DumpScores(db):
         num_scores = cursor.fetchone()[0]
         if num_scores:
           max_num_scores = max(max_num_scores, num_scores)
-          sql = TEMP_SCORE_SQL % {
+          sql = TEMP_SCORES_SQL % {
               'columns': 'score',
               'v_clauses': v_clauses,
               'limit_clause': 'limit %d,1' % (num_scores / 2),

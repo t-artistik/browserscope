@@ -67,8 +67,8 @@ class ResultParent(db.Expando):
 
   @classmethod
   def AddResult(cls, test_set, ip, user_agent_string, results_str,
-                is_import=False, params_str=None, js_user_agent_string=None,
-                **kwds):
+                is_import=False, params_str=None,
+                js_user_agent_string=None, **kwds):
     """Create result models and stores them as one transaction.
 
     Args:
@@ -76,6 +76,8 @@ class ResultParent(db.Expando):
       ip: a string to store as the user's IP. This should be hashed beforehand.
       user_agent_string: the http user agent string.
       results_str: a string like 'test1=time1,test2=time2,[...]'.
+      is_import: if True, skip checking test_keys and do not mark dirty.
+      params_str: a string representation of test_set_params.Params.
       js_user_agent_string: chrome frame ua string from client-side JavaScript.
       kwds: optional fields including 'loader_id'.
     Returns:
@@ -93,7 +95,7 @@ class ResultParent(db.Expando):
                  user_agent=user_agent,
                  params_str=params_str, **kwds)
     try:
-      results = test_set.GetResults(results_str, is_import)
+      results = test_set.GetResults(results_str, ignore_key_errors=is_import)
     except test_set_base.ParseResultsKeyError, e:
       logging.warn(e)
       return None
@@ -101,17 +103,17 @@ class ResultParent(db.Expando):
       logging.warn('Results string with bad value(s): %s', results_str)
       return None
 
-    for result in results:
-      if 'expando' in result:
+    for test_key, values in results.items():
+      if 'expando' in values:
         # test_set.GetResults may add 'expando' value; save it on the parent.
-        parent.__setattr__(result['key'], result['expando'])
+        parent.__setattr__(test_key, values['expando'])
 
     def _AddResultInTransaction():
       parent.put()
-      for result in results:
+      for test_key, values in results.items():
         db.put(ResultTime(parent=parent,
-                          test=result['key'],
-                          score=result['score'],
+                          test=test_key,
+                          score=values['score'],
                           dirty=not is_import))
     db.run_in_transaction(_AddResultInTransaction)
     return parent
@@ -126,20 +128,19 @@ class ResultParent(db.Expando):
 
   def increment_all_counts(self):
     """This is not efficient enough to be used in prod."""
-    result_times = self.get_result_times_as_query()
+    result_times = self.GetResultTimes()
     for result_time in result_times:
-      #logging.debug('ResultTime key is %s ' % (result_time.key()))
-      #logging.debug('w/ ua: %s' %  result_time.parent().user_agent)
       result_time.increment_all_counts()
 
-  def get_result_times_as_query(self):
+  def ResultTimesQuery(self):
     return ResultTime.all().ancestor(self)
 
-  def get_result_times(self):
-    """As long as a parent has less than 1000 result times,
-       this will return them all.
-    """
-    return self.get_result_times_as_query().fetch(1000, 0)
+  def GetResultTimes(self):
+    return self.ResultTimesQuery().fetch(1000)
+
+  def GetResults(self):
+    """Return a dict of scores indexed by test key names."""
+    return dict((x.test, x.score) for x in self.GetResultTimes())
 
   def get_user_agent_list(self):
     """Get user_agent string list."""
@@ -160,7 +161,7 @@ class ResultParent(db.Expando):
                    (row_score, row_display))
     else:
       test_set = all_test_sets.GetTestSet(self.category)
-      result_times = self.get_result_times()
+      result_times = self.GetResultTimes()
       #logging.info('cat: %s, test_set: %s, %s' %
       #             (self.category, test_set, len(result_times)))
 
