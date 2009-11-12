@@ -68,7 +68,7 @@ class TestManageDirty(unittest.TestCase):
     test_set = mock_data.MockTestSet(self.CATEGORY)
     category = self.CATEGORY
     ResultParent.AddResult(test_set, '12.2.2.11', ua_string,
-                           'testDisplay=500,testVisibility=3')
+                           'apple=0,banana=99,coconut=101')
 
     response = self.client.get('/admin/update_dirty', {},
         **mock_data.UNIT_TEST_UA)
@@ -83,23 +83,23 @@ class TestManageDirty(unittest.TestCase):
     query = db.Query(ResultParent)
     result_parent = query.get()
     result_times = ResultTime.all().ancestor(result_parent)
-    self.assertEqual([False, False],
+    self.assertEqual([False, False, False],
                      [x.dirty for x in result_times])
 
     ranker = result_ranker.GetRanker(
-        test_set.GetTest('testDisplay'), 'Firefox 3')
-    self.assertEqual(500, ranker.GetMedian())
+        test_set.GetTest('coconut'), 'Firefox 3')
+    self.assertEqual(101, ranker.GetMedian())
 
   def testUpdateDirtyOverMultipleRequests(self):
     # First, create a "dirty" ResultParent
-    manage_dirty.UPDATE_DIRTY_RESULT_TIME_LIMIT = 1
+    manage_dirty.UPDATE_DIRTY_RESULT_TIME_LIMIT = 2
     ua_string = ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
                  'Gecko/2009011912 Firefox/3.0.6')
 
     test_set = mock_data.MockTestSet(self.CATEGORY)
     category = self.CATEGORY
     ResultParent.AddResult(test_set, '12.2.2.11', ua_string,
-                           'testDisplay=500,testVisibility=3')
+                           'apple=0,banana=99,coconut=101')
 
     response = self.client.get('/admin/update_dirty', {},
         **mock_data.UNIT_TEST_UA)
@@ -114,12 +114,12 @@ class TestManageDirty(unittest.TestCase):
     query = db.Query(ResultParent)
     result_parent = query.get()
     result_times = ResultTime.all().ancestor(result_parent)
-    self.assertEqual([False, False],
+    self.assertEqual([False, False, False],
                      [x.dirty for x in result_times])
 
     ranker = result_ranker.GetRanker(
-        test_set.GetTest('testDisplay'), 'Firefox 3')
-    self.assertEqual(500, ranker.GetMedian())
+        test_set.GetTest('coconut'), 'Firefox 3')
+    self.assertEqual(101, ranker.GetMedian())
 
 if __name__ == '__main__':
   unittest.main()

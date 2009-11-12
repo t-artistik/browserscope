@@ -24,7 +24,6 @@ import logging
 
 from google.appengine.ext import db
 from google.appengine.api import memcache
-from django.http import HttpRequest
 from django.test.client import Client
 
 from base import util
@@ -74,12 +73,11 @@ class TestBeacon(unittest.TestCase):
 
 
   def testBeacon(self):
-    category = 'test_beacon'
-    test_set = mock_data.MockTestSet(category)
+    test_set = mock_data.MockTestSet()
     csrf_token = self.client.get('/get_csrf').content
     params = {
-      'category': category,
-      'results': 'testDisplay=1,testVisibility=2',
+      'category': test_set.category,
+      'results': 'apple=1,banana=2,coconut=4',
       'csrf_token': csrf_token
     }
     response = self.client.get('/beacon', params, **mock_data.UNIT_TEST_UA)
@@ -87,23 +85,18 @@ class TestBeacon(unittest.TestCase):
 
     # Did a ResultParent get created?
     query = db.Query(result.ResultParent)
-    query.filter('category =', category)
+    query.filter('category =', test_set.category)
     result_parent = query.get()
     self.assertNotEqual(result_parent, None)
 
     result_times = result_parent.GetResultTimes()
-    self.assertEqual(2, len(result_times))
-    self.assertEqual(1, result_times[0].score)
-    self.assertEqual('testDisplay', result_times[0].test)
-    self.assertEqual(2, result_times[1].score)
-    self.assertEqual('testVisibility', result_times[1].test)
-    self.assertEqual(True, result_times[0].dirty)
-    self.assertEqual(True, result_times[1].dirty)
+    self.assertEqual(
+        [('apple', 1, True), ('banana', 2, True), ('coconut', 4, True)],
+        sorted((x.test, x.score, x.dirty) for x in result_times))
 
 
   def testBeaconWithChromeFrame(self):
-    category = 'test_beacon'
-    test_set = mock_data.MockTestSet(category)
+    test_set = mock_data.MockTestSet()
     csrf_token = self.client.get('/get_csrf').content
     chrome_ua_string = ('Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) '
         'AppleWebKit/530.1 (KHTML, like Gecko) Chrome/4.0.169.1 Safari/530.1')
@@ -115,8 +108,8 @@ class TestBeacon(unittest.TestCase):
     unit_test_ua = mock_data.UNIT_TEST_UA
     unit_test_ua['HTTP_USER_AGENT'] = chrome_frame_ua_string
     params = {
-      'category': category,
-      'results': 'testDisplay=1,testVisibility=2',
+      'category': test_set.category,
+      'results': 'apple=0,banana=0,coconut=1000',
       'csrf_token': csrf_token,
       'js_ua': chrome_ua_string
     }
@@ -125,7 +118,7 @@ class TestBeacon(unittest.TestCase):
 
     # Did a ResultParent get created?
     query = db.Query(result.ResultParent)
-    query.filter('category =', category)
+    query.filter('category =', test_set.category)
     result_parent = query.get()
     self.assertNotEqual(result_parent, None)
 
@@ -135,21 +128,15 @@ class TestBeacon(unittest.TestCase):
 
     # Were ResultTimes created?
     result_times = result_parent.GetResultTimes()
-    self.assertEqual(2, len(result_times))
-    self.assertEqual(1, result_times[0].score)
-    self.assertEqual('testDisplay', result_times[0].test)
-    self.assertEqual(2, result_times[1].score)
-    self.assertEqual('testVisibility', result_times[1].test)
-    self.assertEqual(True, result_times[0].dirty)
-    self.assertEqual(True, result_times[1].dirty)
-
+    self.assertEqual(
+        [('apple', 0, True), ('banana', 0, True), ('coconut', 1000, True)],
+        sorted((x.test, x.score, x.dirty) for x in result_times))
 
   def testBeaconWithBogusTests(self):
-    category = 'test_beacon_w_bogus_tests'
-    test_set = mock_data.MockTestSet(category)
+    test_set = mock_data.MockTestSet()
     csrf_token = self.client.get('/get_csrf').content
     params = {
-      'category': category,
+      'category': test_set.category,
       'results': 'testBogus=1,testVisibility=2',
       'csrf_token': csrf_token
     }
@@ -158,7 +145,7 @@ class TestBeacon(unittest.TestCase):
 
     # Did a ResultParent get created? Shouldn't have.
     query = db.Query(result.ResultParent)
-    query.filter('category =', category)
+    query.filter('category =', test_set.category)
     result_parent = query.get()
     self.assertEqual(None, result_parent)
 
@@ -189,54 +176,6 @@ class TestUtilFunctions(unittest.TestCase):
       self.assertTrue(util.CheckThrottleIpAddress(ip, ua_string))
     # The next one should bomb.
     self.assertFalse(util.CheckThrottleIpAddress(ip, ua_string))
-
-
-class TestStats(unittest.TestCase):
-
-  # overload this
-  #def util.GetTestsByCategory(category):
-  #  tests = (
-  #    ('test1', 'Test 1', 'url1', 'boolean')
-  #  )
-  #  return tests
-
-  def setUp(self):
-    # Every test needs a client.
-    self.client = Client()
-
-
-  def GetStatsData(self, use_memcache):
-
-    test_set = mock_data.AddFiveResultsAndIncrementAllCounts()
-    user_agents = mock_data.GetUserAgent().get_string_list()
-
-    request = HttpRequest()
-    request.META = {'HTTP_USER_AGENT': 'Firefox 3.0.1'}
-
-    stats = util.GetStatsData(test_set.category,
-        test_set.tests, user_agents, params_str=None,
-        use_memcache=use_memcache)
-
-    expected_medians = {'testDisplay': 300, 'testVisibility': 2}
-    expected_scores = {'testDisplay': 9, 'testVisibility': 10}
-    expected_display = {'testDisplay': '3X', 'testVisibility':
-                        settings.STATS_SCORE_TRUE}
-    for test in test_set.tests:
-      for user_agent in user_agents:
-        self.assertEqual(expected_medians[test.key],
-                         stats[user_agent]['results'][test.key]['median'])
-        self.assertEqual(expected_scores[test.key],
-                         stats[user_agent]['results'][test.key]['score'])
-        self.assertEqual(expected_display[test.key],
-                         stats[user_agent]['results'][test.key]['display'])
-
-    expected_total_runs = 5
-    for user_agent in user_agents:
-      self.assertEqual(expected_total_runs, stats[user_agent]['total_runs'])
-
-
-  def testGetStatsDataWithoutMemcache(self):
-    self.GetStatsData(use_memcache=False)
 
 
 if __name__ == '__main__':

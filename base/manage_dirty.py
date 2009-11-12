@@ -175,7 +175,7 @@ def UpdateDirty(request):
             result_time.increment_all_counts()
             num_completed += 1
           if dirty_query.IsResultParentDone():
-            result_parent.invalidate_ua_memcache()
+            result_parent.CompleteDirtyProcessing()
     except runtime.DeadlineExceededError:
       logging.warn('UpdateDirty DeadlineExceededError; '
                    'number of increment_all_counts completed=%s', num_completed)

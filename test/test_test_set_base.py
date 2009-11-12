@@ -21,49 +21,68 @@ __author__ = 'slamm@google.com (Stephen Lamm)'
 
 import unittest
 
-import mock_data
 from categories import test_set_base
+import mock_data
+
 
 class TestParseResults(unittest.TestCase):
   def testValidResultsStringGivesExpectedResults(self):
-    results_str = 'testDisplay=5,testVisibility=10'
+    results_str = 'apple=1,banana=5,coconut=500'
     expected_results = {
-        'testDisplay': {'score': 5},
-        'testVisibility': {'score': 10},
+        'apple': {'score': 1},
+        'banana': {'score': 5},
+        'coconut': {'score': 500},
         }
-    test_set = mock_data.MockTestSet('cat1')
+    test_set = mock_data.MockTestSet()
     results = test_set.ParseResults(results_str)
     self.assertEqual(expected_results, results)
 
 
   def testNonIntegerValueRaises(self):
-    results_str = 'testDisplay=5,testVisibility=10.00001'
-    test_set = mock_data.MockTestSet('cat1')
+    results_str = 'apple=0,banana=10.00001,coconut=100'
+    test_set = mock_data.MockTestSet()
     self.assertRaises(test_set_base.ParseResultsValueError,
                       test_set.ParseResults, results_str)
 
   def testMissingKeyRaises(self):
-    results_str = 'testDisplay=5'
-    test_set = mock_data.MockTestSet('cat1')
+    results_str = 'banana=5'
+    test_set = mock_data.MockTestSet()
     self.assertRaises(test_set_base.ParseResultsKeyError,
                       test_set.ParseResults, results_str)
 
   def testKeyTypoRaises(self):
-    results_str = 'testDisplay=5,TeStvIsIbIlItY=10'
-    test_set = mock_data.MockTestSet('cat1')
+    results_str = 'apple=1,BANANA=10,coconut=2'
+    test_set = mock_data.MockTestSet()
     self.assertRaises(test_set_base.ParseResultsKeyError,
                       test_set.ParseResults, results_str)
 
 
 class TestGetResults(unittest.TestCase):
   def testGetResultsMockData(self):
-    test_set = mock_data.MockTestSet('category-addresult')
+    results_str = 'apple=1,banana=2,coconut=3'
+    test_set = mock_data.MockTestSet()
     expected_results = {
-        'testDisplay': {'score': 500},
-        'testVisibility': {'score': 200},
+        'apple': {'score': 1},
+        'banana': {'score': 2},
+        'coconut': {'score': 3},
         }
-    results = test_set.GetResults('testDisplay=500,testVisibility=200')
-    self.assertEqual(expected_results, results)
+    self.assertEqual(expected_results, test_set.GetResults(results_str))
+
+
+class TestGetStats(unittest.TestCase):
+
+  def testGetStatsEmptyRawData(self):
+    self.test_set = mock_data.MockTestSet()
+    expected_stats = {
+        'summary_score': 0,
+        'summary_display': '0',
+        'results': {},
+        }
+    self.assertEqual(expected_stats, self.test_set.GetStats({}))
+
+  def testGetStats(self):
+    # TODO(slamm): XXX more to do here
+    pass
 
 
 class TestConvert100to10Base(unittest.TestCase):

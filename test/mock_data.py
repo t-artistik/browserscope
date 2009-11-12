@@ -21,125 +21,51 @@ __author__ = 'slamm@google.com (Stephen Lamm)'
 from google.appengine.ext import db
 
 from categories import test_set_base
-from categories import test_set_params
 from categories import all_test_sets
 from models.user_agent import UserAgent
-from models.result import ResultParent
-from models.result import ResultTime
 
-def GetUserAgentString():
+def GetUserAgentString(firefox_version='3.0.6'):
   return ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
-          'Gecko/2009011912 Firefox/3.0.6')
+          'Gecko/2009011912 Firefox/%s' % firefox_version)
 
 def GetUserAgent():
   return UserAgent.factory(GetUserAgentString())
 
-class MockTest(test_set_base.TestBase):
-  """Mock test object."""
-  def __init__(self, key, name, url, min_value=0, max_value=10000):
-    test_set_base.TestBase.__init__(
-        self,
-        key=key,
-        name=name,
-        url=url,
-        doc='doc',
-        min_value=min_value,
-        max_value=max_value)
-
-  def GetScoreAndDisplayValue(self, median, medians=None, is_uri_result=False):
-    """Custom scoring function.
-
-    Args:
-      median: The actual median for this test from all scores.
-      medians: A dict of the medians for all tests indexed by key.
-      is_uri_result: Boolean, if results are in the url, i.e. home page.
-    Returns:
-      (score, display)
-      Where score is a value between 1-100.
-      And display is the text for the cell.
-    """
-    if self.key == 'testDisplay':
-      return 86, '%iX' % int((median or 0)/100)
-    else:
-      return None
-
-
 UNIT_TEST_UA = {'HTTP_USER_AGENT': 'silly-human', 'REMOTE_ADDR': '127.0.0.1'}
 
 
-TESTS = (
-    MockTest('testDisplay', 'Display Block', 'testpage',
-             min_value=0, max_value=1000),
-    MockTest('testVisibility', 'Visiblility None', 'testpage',
-             min_value=0, max_value=1000),
-    )
+class MockTest(test_set_base.TestBase):
+  """Mock test object."""
+  def __init__(self, key, min_value, max_value, **kwds):
+    test_set_base.TestBase.__init__(
+        self,
+        key=key,
+        name='name for %s' % key,
+        url='url for %s' % key,
+        doc='doc for %s' % key,
+        min_value=min_value,
+        max_value=max_value,
+        **kwds)
 
 
 class MockTestSet(test_set_base.TestSet):
-  def __init__(self, category, params=None):
+  def __init__(self, params=None):
+    category = 'mockTestSet'
+    tests = (
+        MockTest('apple', min_value=0, max_value=1),
+        MockTest('banana', min_value=0, max_value=100),
+        MockTest('coconut', min_value=0, max_value=1000),
+        )
     test_set_base.TestSet.__init__(
-        self, category, category, TESTS, default_params=params)
+        self, category, category, tests, default_params=params)
     all_test_sets.AddTestSet(self)
 
+  def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
+    raw_score = raw_scores[test_key]
+    score = raw_score * 2
+    return score, 'd:%s' % score
 
-class MockTestSetWithAdjustResults(MockTestSet):
-  def AdjustResults(self, results):
-    for values in results.values():
-      # Add the raw value to be expando'd and store a munged value in score.
-      values['expando'] = values['score']
-      values['score'] = int(round(values['score'] / 2))
-    return results
-
-
-def AddFiveResultsAndIncrementAllCounts():
-  test_set = MockTestSet('category')
-  for scores in ((500, 0), (200, 1), (300, 2), (100, 3), (400, 4)):
-    result = ResultParent.AddResult(test_set, '12.2.2.25', GetUserAgentString(),
-                                    'testDisplay=%s,testVisibility=%s' % scores)
-    result.increment_all_counts()
-  return test_set
-
-def AddThreeResultsWithParamsAndIncrementAllCounts():
-  test_set = MockTestSet(
-      'category-w-params',
-      params=test_set_params.Params('w-params', 'a=b', 'c=d', 'e=f'))
-  params_str = str(test_set.default_params)
-  for scores in ((2, 0), (1, 1), (200, 2)):
-    result = ResultParent.AddResult(test_set, '12.2.2.25', GetUserAgentString(),
-                                    'testDisplay=%s,testVisibility=%s' % scores,
-                                    params_str=params_str)
-    result.increment_all_counts()
-  return test_set
-
-def AddOneTest():
-  test_set = MockTestSet('category-one')
-  result = ResultParent.AddResult(test_set, '12.2.2.25', GetUserAgentString(),
-                                  'testDisplay=500,testVisibility=0')
-  result.increment_all_counts()
-  return test_set
-
-def AddOneTestUsingAddResult():
-  test_set = MockTestSet('category-addresult')
-  result = ResultParent.AddResult(test_set, '12.2.2.25', GetUserAgentString(),
-                                  'testDisplay=500,testVisibility=200')
-  return result
-
-def AddOneTestUsingAddResultWithAdjustResults():
-  test_set = MockTestSetWithAdjustResults('category-addresult-withparseresults')
-  result = ResultParent.AddResult(test_set, '12.2.2.25', GetUserAgentString(),
-                                  'testDisplay=500,testVisibility=200')
-  return result
-
-def AddOneTestUsingAddResultWithExpando():
-  test_set = MockTestSet('category-addresult-withexpando')
-  def AdjustResults(results):
-    for test_key, scores in results.items():
-      if test_key == 'testDisplay':
-        scores['expando'] = 20
-      elif test_key == 'testVisibility':
-        scores['expando'] = 'testeroo'
-    return results
-  test_set.AdjustResults = AdjustResults
-  parent = ResultParent.AddResult(test_set, '12.2.2.25', GetUserAgentString(),
-                                  'testDisplay=500,testVisibility=200')
-  return parent
+  def GetRowScoreAndDisplayValue(self, results):
+    score = sum(x['score'] for x in results.values())
+    display = str(sum(x['raw_score'] for x in results.values()))
+    return score, display

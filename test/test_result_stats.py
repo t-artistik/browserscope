@@ -23,6 +23,9 @@ import unittest
 
 from google.appengine.ext import db
 from models import result_stats
+from models.result import ResultParent
+
+import mock_data
 
 
 class BrowserCounterTest(unittest.TestCase):
@@ -93,3 +96,68 @@ class BrowserCounterTest(unittest.TestCase):
         'cat', ['IE', 'IE 6', 'IE 6.0'], 16)
     self.assertEqual({'IE': 16},
                      result_stats.BrowserCounter.GetCounts('cat', 0))
+
+
+
+class CategoryStatsManagerTest(unittest.TestCase):
+
+  def setUp(self):
+    db.delete(result_stats.BrowserCounter.all(keys_only=True).fetch(1000))
+
+  def tearDown(self):
+    db.delete(result_stats.BrowserCounter.all(keys_only=True).fetch(1000))
+
+  def testGetStats(self):
+    test_set = mock_data.MockTestSet()
+    add_result_params = (
+        # ((apple, banana, coconut), firefox_version)
+        ((0, 0, 500), '3.0.6'),
+        ((1, 1, 200), '3.0.6'),
+        ((0, 2, 300), '3.0.6'),
+        ((1, 3, 100), '3.5'),
+        ((0, 4, 400), '3.5')
+        )
+    for scores, firefox_version in add_result_params:
+      parent = ResultParent.AddResult(
+          test_set, '12.2.2.25', mock_data.GetUserAgentString(firefox_version),
+          'apple=%s,banana=%s,coconut=%s' % scores)
+      parent.increment_all_counts()
+    level_1_stats = {
+        'Firefox 3': {
+            'summary_score': 605,
+            'summary_display': '302',
+            'total_runs': 5,
+            'results': {
+                'coconut': {'score': 600, 'raw_score': 300, 'display': 'd:600'},
+                'apple': {'score': 1, 'raw_score': 0, 'display': 'no'},
+                'banana': {'score': 4, 'raw_score': 2, 'display': 'd:4'}
+                }
+            }
+        }
+    self.assertEqual(level_1_stats, result_stats.CategoryStatsManager.GetStats(
+        test_set, version_level=1))
+
+    level_3_stats = {
+        'Firefox 3.0.6': {
+            'summary_score': 603,
+            'summary_display': '301',
+            'total_runs': 3,
+            'results': {
+                'coconut': {'score': 600, 'raw_score': 300, 'display': 'd:600'},
+                'apple': {'score': 1, 'raw_score': 0, 'display': 'no'},
+                'banana': {'score': 2, 'raw_score': 1, 'display': 'd:2'}
+                }
+            },
+        'Firefox 3.5': {
+            'summary_score': 818,
+            'summary_display': '405',
+            'total_runs': 2,
+            'results': {
+                'coconut': {'score': 800, 'raw_score': 400, 'display': 'd:800'},
+                'apple': {'score': 10, 'raw_score': 1, 'display': 'yes'},
+                'banana': {'score': 8, 'raw_score': 4, 'display': 'd:8'}
+                }
+            },
+        }
+    self.assertEqual(level_3_stats, result_stats.CategoryStatsManager.GetStats(
+        test_set, version_level=3))

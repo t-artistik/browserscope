@@ -27,31 +27,9 @@ from google.appengine.api import memcache
 from categories import test_set_base
 from models import result_ranker
 
-class MockTest(test_set_base.TestBase):
-  """Mock test object."""
-  def __init__(self, key, min_value, max_value):
-    test_set_base.TestBase.__init__(
-        self,
-        key=key,
-        name='name for %s' % key,
-        url='url for %s' % key,
-        doc='doc for %s' % key,
-        min_value=min_value,
-        max_value=max_value)
+import mock_data
 
-
-class MockTestSet(test_set_base.TestSet):
-  def __init__(self, params=None):
-    category = 'mockTestSet'
-    tests = (
-        MockTest('testBaz', min_value=0, max_value=1),
-        MockTest('testFoo', min_value=0, max_value=100),
-        MockTest('testBar', min_value=0, max_value=1000),
-        )
-    test_set_base.TestSet.__init__(
-        self, category, category, tests, default_params=params)
-    #all_test_sets.AddTestSet(self)
-
+MockTestSet = mock_data.MockTestSet
 
 class CountRankerTest(unittest.TestCase):
   def setUp(self):

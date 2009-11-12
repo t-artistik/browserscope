@@ -87,24 +87,24 @@ class TestDataDump(unittest.TestCase):
     self.assertEqual(400, response.status_code)
 
   def testNoBookmarkOrCreatedResultParent(self):
-    test_set = mock_data.MockTestSet('category')
-    for scores in ((10, 0), (20, 1), (30, 2), (50, 3), (50, 4)):
+    test_set = mock_data.MockTestSet()
+    for scores in ((1, 4, 50), (1, 1, 20), (0, 2, 30), (1, 0, 10), (1, 3, 10)):
       result = ResultParent.AddResult(
           test_set, '1.2.2.5', mock_data.GetUserAgentString(),
-          'testDisplay=%s,testVisibility=%s' % scores)
+          'apple=%s,banana=%s,coconut=%s' % scores)
     params = {'model': 'ResultParent'}
     response = self.client.get('/admin/data_dump', params)
     self.assertEqual(200, response.status_code)
     response_params = simplejson.loads(response.content)
     self.assertEqual(None, response_params['bookmark'])
-    self.assertEqual(15, len(response_params['data'])) # 5 parents, 10 times
+    self.assertEqual(20, len(response_params['data'])) # 5 parents + 15 times
 
   def testNoBookmarkOrCreatedUserAgent(self):
-    test_set = mock_data.MockTestSet('category')
-    for scores in ((10, 0), (20, 1)):
+    test_set = mock_data.MockTestSet()
+    for scores in ((0, 10, 100), (1, 20, 200)):
       result = ResultParent.AddResult(
           test_set, '1.2.2.5', mock_data.GetUserAgentString(),
-          'testDisplay=%s,testVisibility=%s' % scores)
+          'apple=%s,banana=%s,coconut=%s' % scores)
     params = {'model': 'UserAgent'}
     response = self.client.get('/admin/data_dump', params)
     self.assertEqual(200, response.status_code)
@@ -114,14 +114,14 @@ class TestDataDump(unittest.TestCase):
     self.assertEqual('Firefox', response_params['data'][0]['family'])
 
   def testCreated(self):
-    test_set = mock_data.MockTestSet('category')
+    test_set = mock_data.MockTestSet()
     created_base = datetime.datetime(2009, 9, 9, 9, 9, 0)
-    for scores in ((10, 0), (20, 1)):
-      ip = '1.2.2.%s' % scores[0]
+    for scores in ((0, 10, 100), (1, 20, 200)):
+      ip = '1.2.2.%s' % scores[1]
       result = ResultParent.AddResult(
           test_set, ip, mock_data.GetUserAgentString(),
-          'testDisplay=%s,testVisibility=%s' % scores,
-          created=created_base + datetime.timedelta(seconds=scores[0]))
+          'apple=%s,banana=%s,coconut=%s' % scores,
+          created=created_base + datetime.timedelta(seconds=scores[1]))
     params = {
           'model': 'ResultParent',
           'created': created_base + datetime.timedelta(seconds=15),
@@ -130,5 +130,5 @@ class TestDataDump(unittest.TestCase):
     self.assertEqual(200, response.status_code)
     response_params = simplejson.loads(response.content)
     self.assertEqual(None, response_params['bookmark'])
-    self.assertEqual(3, len(response_params['data']))  # parent + 2 times
+    self.assertEqual(4, len(response_params['data']))  # parent + 3 times
     self.assertEqual('1.2.2.20', response_params['data'][0]['ip'])

@@ -22,7 +22,7 @@ from google.appengine.api import memcache
 
 from categories import all_test_sets
 from categories import test_set_base
-from models import user_agent
+from models import result_stats
 from models.user_agent import UserAgent
 
 import settings
@@ -117,6 +117,11 @@ class ResultParent(db.Expando):
                           dirty=not is_import))
     db.run_in_transaction(_AddResultInTransaction)
     return parent
+
+  def CompleteDirtyProcessing(self)
+    result_stats.BrowserCounter.Increment(
+        self.category, self.get_user_agent_list())
+    self.invalidate_ua_memcache()
 
   def invalidate_ua_memcache(self):
     memcache_ua_keys = ['%s_%s' % (self.category, user_agent)

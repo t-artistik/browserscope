@@ -22,7 +22,9 @@ __author__ = 'slamm@google.com (Stephen Lamm)'
 import logging
 
 from models import result_ranker
+from models import result_stats
 
+import settings
 
 class Error(Exception):
   """Base exception for test_set_base."""
@@ -63,6 +65,8 @@ class TestBase(object):
       self.score_type = 'custom'
 
   def GetRanker(self, browser, params_str=None):
+    if params_str is None and self.test_set.default_params:
+      params_str = str(self.test_set.default_params)
     return result_ranker.GetRanker(self, browser, params_str)
 
   def GetOrCreateRanker(self, browser, params_str=None):
@@ -180,12 +184,11 @@ class TestSet(object):
       browser: a browser/version string like 'Firefox 3.0'.
       tests: a list of test instances
     Returns:
-      [(test_1, ranker_1), (test_2, ranker_2), ...]
+      [ranker_1, ranker_2, ...]
     """
-    tests = self.tests
-    params_str = (test_set.default_params and
-                  str(test_set.default_params) or None)
-    return zip(tests, result_ranker.GetRankers(tests, browser, params_str))
+    tests = tests or self.tests
+    params_str = self.default_params and str(self.default_params) or None
+    return result_ranker.GetRankers(tests, browser, params_str)
 
   def GetMedians(self, browser):
     """Return the raw scores for a given browser.
@@ -195,8 +198,9 @@ class TestSet(object):
     Returns:
       {test_key_1: median_1, test_key_2: median_2, ...}
     """
+    rankers = self.GetRankers(browser)
     return dict((test.key, ranker.GetMedian())
-                for test, ranker in self.GetRankers(browser) if ranker)
+                for test, ranker in zip(self.tests, rankers) if ranker)
 
   def GetStats(self, raw_scores):
     """Get normalized scores, display values including summary values.

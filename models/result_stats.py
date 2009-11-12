@@ -68,6 +68,7 @@ class BrowserCounter(db.Model):
       category: a category string like 'network' or 'reflow'.
       browsers: a list of browsers (e.g. ['Firefox', 'Firefox 3'])
     """
+    logging.info('Increment: category=%s, browsers=%s', category, browsers)
     # TODO(slamm): update memcached stats
     def _IncrementTransaction():
       if len(browsers) < 4:
@@ -164,8 +165,10 @@ class BrowserCounter(db.Model):
   def _GetCounters(cls, category):
     query = cls.all().filter('category =', category)
     counters = query.fetch(1000)
+    logging.info('Counters found: %s',
+                 ['%s, %s, %s' % (x.category, x.browsers, x.count) for x in counters])
     if len(counters) > 900:
-      # TODO: Handle more than 1000 user agents strings in a group.
+      # TODO: Handle more than 1000 browsers in a category.
       logging.warn('BrowserCounts(category=%s) will max out at 1000:'
                    ' len(counters)=%s',
                    category, len(counters))
@@ -214,8 +217,8 @@ class CategoryStatsManager(object):
     stats = {}
     category = test_set.category
     counts = BrowserCounter.GetCounts(category, version_level, browsers)
-    if browsers:
-      for browser in browsers:
+    if counts:
+      for browser in counts.keys():
         medians = test_set.GetMedians(browser)
         stats[browser] = test_set.GetStats(medians)
         stats[browser]['total_runs'] = counts[browser]
