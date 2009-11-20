@@ -28,8 +28,8 @@ def GetUserAgentString(firefox_version='3.0.6'):
   return ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
           'Gecko/2009011912 Firefox/%s' % firefox_version)
 
-def GetUserAgent():
-  return UserAgent.factory(GetUserAgentString())
+def GetUserAgent(firefox_version='3.0.6'):
+  return UserAgent.factory(GetUserAgentString(firefox_version))
 
 UNIT_TEST_UA = {'HTTP_USER_AGENT': 'silly-human', 'REMOTE_ADDR': '127.0.0.1'}
 
@@ -63,7 +63,7 @@ class MockTestSet(test_set_base.TestSet):
   def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
     raw_score = raw_scores[test_key]
     score = raw_score * 2
-    return score, 'd:%s' % score
+    return score, 'd:%s' % str(score)
 
   def GetRowScoreAndDisplayValue(self, results):
     score = sum(x['score'] for x in results.values())

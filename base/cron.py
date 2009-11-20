@@ -26,6 +26,7 @@ from google.appengine.ext import db
 import django
 from django import http
 
+from models import result_stats
 from models.result import ResultParent
 from models.user_agent import UserAgent
 
@@ -34,13 +35,18 @@ import settings
 
 
 def UserAgentGroup(request):
-  key = request.GET.get('key')
-  dbkey = db.Key(key)
-  if not key:
+  category = request.REQUEST.get('category')
+  user_agent_key = db.Key(request.REQUEST.get('user_agent_key'))
+  if not category:
+    return http.HttpResponse('No cateogry')
+  if (category not in settings.CATEGORIES or
+      category not in settings.CATEGORIES_BETA):
+    return http.HttpResponse('Bad cateogry: %s' % category)
+  if not user_agent_key:
     return http.HttpResponse('No key')
-  user_agent = UserAgent.get(dbkey)
+  user_agent = UserAgent.get(user_agent_key)
   if user_agent:
-    user_agent.update_groups()
+    result_stats.UpdateCategory(category, user_agent)
     return http.HttpResponse('Done with UserAgent key=%s' % key)
   else:
     return http.HttpResponse('No user_agent with this key.')

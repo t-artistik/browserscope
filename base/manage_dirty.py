@@ -40,7 +40,6 @@ import settings
 
 UPDATE_DIRTY_DONE = 'No more dirty ResultTimes.'
 UPDATE_DIRTY_ADDED_TASK = 'Added task to update more dirty.'
-UPDATE_DIRTY_RESULT_TIME_LIMIT = 20
 
 class UpdateDirtyController(db.Model):
   NAMESPACE = 'cron_update_dirty'
@@ -95,6 +94,8 @@ class UpdateDirtyController(db.Model):
 class DirtyResultTimesQuery(object):
   """Iterate through dirty ResultTimes grouped by ResultParents."""
 
+  RESULT_TIME_LIMIT = 20
+
   def __init__(self, encoded_result_parent_key=None):
     """Initialize a DirtyResultTimesQuery.
 
@@ -133,8 +134,8 @@ class DirtyResultTimesQuery(object):
     dirty_result_times = []
     if self.result_parent_key:
       query = self._GetQuery(self.result_parent_key)
-      dirty_result_times = query.fetch(UPDATE_DIRTY_RESULT_TIME_LIMIT + 1)
-      if len(dirty_result_times) < UPDATE_DIRTY_RESULT_TIME_LIMIT + 1:
+      dirty_result_times = query.fetch(self.RESULT_TIME_LIMIT + 1)
+      if len(dirty_result_times) < self.RESULT_TIME_LIMIT + 1:
         self.result_parent_key = None
       else:
         dirty_result_times.pop()
@@ -157,28 +158,11 @@ def UpdateDirty(request):
   if not UpdateDirtyController.AcquireLock():
     return http.HttpResponse('UpdateDirty: unable to acquire lock.')
   try:
-    num_completed = 0
     try:
       dirty_query = DirtyResultTimesQuery(request.GET.get('result_parent_key'))
-      dirty_result_times = dirty_query.Fetch()
-      if dirty_result_times:
-        result_parent = dirty_result_times[0].parent()
-        # Mark non-live test categories as not-dirty, don't rank their scores.
-        if (result_parent.category not in settings.CATEGORIES and
-            settings.BUILD == 'production'):
-          for result_time in dirty_result_times:
-            result_time.dirty = False
-          db.put(dirty_result_times)
-        else:
-          for result_time in dirty_result_times:
-            # Count the times and mark them !dirty.
-            result_time.increment_all_counts()
-            num_completed += 1
-          if dirty_query.IsResultParentDone():
-            result_parent.CompleteDirtyProcessing()
+      ResultParent.UpdateStatsFromDirty(dirty_query)
     except runtime.DeadlineExceededError:
-      logging.warn('UpdateDirty DeadlineExceededError; '
-                   'number of increment_all_counts completed=%s', num_completed)
+      logging.warn('UpdateDirty DeadlineExceededError')
     next_result_parent_key = dirty_query.NextResultParentKey()
     if next_result_parent_key:
       ScheduleDirtyUpdate(next_result_parent_key)
@@ -234,11 +218,7 @@ def ScheduleDirtyUpdate(result_parent_instance_or_key=None):
     if not result_parent_key:
       result_parent_key = DirtyResultTimesQuery().NextResultParentKey()
     if result_parent_key:
-      task = taskqueue.Task(method='GET',
-                            params={'result_parent_key': result_parent_key}
-                            ).add(queue_name='update-dirty')
-      logging.info('Added update-dirty task for result_parent_key: %s',
-                   result_parent_key)
+      ResultParent.ScheduleDirtyUpdate(result_parent_key)
     else:
       logging.info('No dirty result times to schedule.')
   except:

@@ -39,42 +39,18 @@ class MockTestSetWithAdjustResults(mock_data.MockTestSet):
 
 class ResultTest(unittest.TestCase):
 
-  def testGetMedian(self):
+  def testGetMedianAndNumScores(self):
     test_set = mock_data.MockTestSet()
     for scores in ((0, 0, 500), (1, 1, 200),
                    (0, 2, 300), (1, 3, 100), (0, 4, 400)):
       parent = ResultParent.AddResult(
           test_set, '12.2.2.25', mock_data.GetUserAgentString(),
           'apple=%s,banana=%s,coconut=%s' % scores)
-      parent.increment_all_counts()
     rankers = test_set.GetRankers('Firefox 3')
-    self.assertEqual([0, 2, 300],
-                     [ranker.GetMedian() for ranker in rankers])
+    self.assertEqual([(0, 5), (2, 5), (300, 5)],
+                     [ranker.GetMedianAndNumScores() for ranker in rankers])
 
-  def testAddResultIncrementsBrowserCounter(self):
-    test_set = mock_data.MockTestSet()
-    add_result_params = (
-        # ((apple, banana, coconut), firefox_version)
-        ((0, 0, 500), '3.0.6'),
-        ((1, 1, 200), '3.0.6'),
-        ((0, 2, 300), '3.0.6'),
-        ((1, 3, 100), '3.5'),
-        ((0, 4, 400), '3.5')
-        )
-    for scores, firefox_version in add_result_params:
-      parent = ResultParent.AddResult(
-          test_set, '12.2.2.25', mock_data.GetUserAgentString(firefox_version),
-          'apple=%s,banana=%s,coconut=%s' % scores)
-      parent.increment_all_counts()
-
-    self.assertEqual({'Firefox 3.0.6': 3, 'Firefox 3.5': 2},
-                     result_stats.BrowserCounts.GetCounts(test_set.category,
-                                                          version_level=3))
-    self.assertEqual({'Firefox 3': 5},
-                     result_stats.BrowserCounts.GetCounts(test_set.category,
-                                                          version_level=1))
-
-  def testGetMedianWithParams(self):
+  def testGetMedianAndNumScoresWithParams(self):
     params = test_set_params.Params('w-params', 'a=b', 'c=d', 'e=f')
     params_str = str(params)
     test_set = mock_data.MockTestSet(params=params)
@@ -82,9 +58,8 @@ class ResultTest(unittest.TestCase):
       parent = ResultParent.AddResult(
           test_set, '12.2.2.25', mock_data.GetUserAgentString(),
           'apple=%s,banana=%s,coconut=%s' % scores, params_str=params_str)
-      parent.increment_all_counts()
     ranker = test_set.GetTest('coconut').GetRanker('Firefox 3')
-    self.assertEqual(2, ranker.GetMedian())
+    self.assertEqual((2, 3), ranker.GetMedianAndNumScores())
 
   def testAddResult(self):
     test_set = mock_data.MockTestSet()

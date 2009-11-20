@@ -45,39 +45,39 @@ class CountRankerTest(unittest.TestCase):
     ranker.Add(2)
     ranker = result_ranker.GetRanker(*self.ranker_params)
     self.assertEqual([0, 0, 1], ranker.counts)
-    self.assertEqual(2, ranker.GetMedian())
+    self.assertEqual((2, 1), ranker.GetMedianAndNumScores())
     ranker.Add(4)
     ranker = result_ranker.GetRanker(*self.ranker_params)
     self.assertEqual([0, 0, 1, 0, 1], ranker.counts)
-    self.assertEqual(4, ranker.GetMedian())
+    self.assertEqual((4, 2), ranker.GetMedianAndNumScores())
     ranker.Add(2)
     ranker = result_ranker.GetRanker(*self.ranker_params)
     self.assertEqual([0, 0, 2, 0, 1], ranker.counts)
-    self.assertEqual(2, ranker.GetMedian())
+    self.assertEqual((2, 3), ranker.GetMedianAndNumScores())
 
   def testSetCounts(self):
     ranker = result_ranker.GetRanker(*self.ranker_params)
     ranker.SetCounts([0, 3, 1, 3])
     ranker = result_ranker.GetRanker(*self.ranker_params)
-    self.assertEqual(2, ranker.GetMedian())
+    self.assertEqual((2, 7), ranker.GetMedianAndNumScores())
     ranker.SetCounts([4, 3])
     ranker = result_ranker.GetRanker(*self.ranker_params)
-    self.assertEqual(0, ranker.GetMedian())
+    self.assertEqual((0, 7), ranker.GetMedianAndNumScores())
     ranker.Add(1)
     ranker = result_ranker.GetRanker(*self.ranker_params)
-    self.assertEqual(1, ranker.GetMedian())
+    self.assertEqual((1, 8), ranker.GetMedianAndNumScores())
 
   def testAddScoreTooBig(self):
     ranker = result_ranker.GetRanker(*self.ranker_params)
     ranker.Add(101)
     ranker = result_ranker.GetRanker(*self.ranker_params)
-    self.assertEqual(100, ranker.GetMedian())
+    self.assertEqual((100, 1), ranker.GetMedianAndNumScores())
 
   def testAddScoreTooSmall(self):
     ranker = result_ranker.GetRanker(*self.ranker_params)
     ranker.Add(-1)
     ranker = result_ranker.GetRanker(*self.ranker_params)
-    self.assertEqual(0, ranker.GetMedian())
+    self.assertEqual((0, 1), ranker.GetMedianAndNumScores())
 
 
 class LastNRankerTest(unittest.TestCase):
@@ -85,55 +85,55 @@ class LastNRankerTest(unittest.TestCase):
     self.test_set = MockTestSet()
     self.ranker_params = (self.test_set.tests[2], 'Safari 4.1')
     self.ranker = result_ranker.GetOrCreateRanker(*self.ranker_params)
-    self.old_max_num_scores = result_ranker.LastNRanker.MAX_NUM_SCORES
+    self.old_max_num_scores = result_ranker.LastNRanker.MAX_NUM_SAMPLED_SCORES
 
   def tearDown(self):
     self.ranker.delete()
-    result_ranker.LastNRanker.MAX_NUM_SCORES = self.old_max_num_scores
+    result_ranker.LastNRanker.MAX_NUM_SAMPLED_SCORES = self.old_max_num_scores
 
   def testAddScore(self):
     ranker = result_ranker.GetRanker(*self.ranker_params)
     ranker.Add(1000)
     ranker = result_ranker.GetRanker(*self.ranker_params)
     self.assertEqual([1000], ranker.scores)
-    self.assertEqual(1000, ranker.GetMedian())
+    self.assertEqual((1000, 1), ranker.GetMedianAndNumScores())
 
     ranker.Add(0)
     ranker = result_ranker.GetRanker(*self.ranker_params)
     self.assertEqual([0, 1000], ranker.scores)
-    self.assertEqual(1000, ranker.GetMedian())
+    self.assertEqual((1000, 2), ranker.GetMedianAndNumScores())
     ranker.Add(500)
     ranker = result_ranker.GetRanker(*self.ranker_params)
     self.assertEqual([0, 500, 1000], ranker.scores)
-    self.assertEqual(500, ranker.GetMedian())
+    self.assertEqual((500, 3), ranker.GetMedianAndNumScores())
 
   def testSetScores(self):
     ranker = result_ranker.GetRanker(*self.ranker_params)
-    ranker.SetScores([4, 4, 5, 5, 6])
+    ranker.SetScores([4, 4, 5, 5, 6], 10)
     ranker = result_ranker.GetRanker(*self.ranker_params)
-    self.assertEqual(5, ranker.GetMedian())
+    self.assertEqual((5, 10), ranker.GetMedianAndNumScores())
     ranker.Add(4)
     ranker = result_ranker.GetRanker(*self.ranker_params)
-    self.assertEqual(5, ranker.GetMedian())
+    self.assertEqual((5, 11), ranker.GetMedianAndNumScores())
     ranker.Add(4)
     ranker = result_ranker.GetRanker(*self.ranker_params)
     self.assertEqual([4, 4, 4, 4, 5, 5, 6], ranker.scores)
-    self.assertEqual(4, ranker.GetMedian())
+    self.assertEqual((4, 12), ranker.GetMedianAndNumScores())
 
   def testDropLowScore(self):
-    result_ranker.LastNRanker.MAX_NUM_SCORES = 5
+    result_ranker.LastNRanker.MAX_NUM_SAMPLED_SCORES = 5
     ranker = result_ranker.GetRanker(*self.ranker_params)
-    ranker.SetScores([4, 4, 5, 5, 6])
+    ranker.SetScores([4, 4, 5, 5, 6], 15)
     ranker.Add(5)
     ranker = result_ranker.GetRanker(*self.ranker_params)
     self.assertEqual([4, 5, 5, 5, 6], ranker.scores)
-    self.assertEqual(5, ranker.GetMedian())
+    self.assertEqual((5, 16), ranker.GetMedianAndNumScores())
 
   def testDropHighScore(self):
-    result_ranker.LastNRanker.MAX_NUM_SCORES = 4
+    result_ranker.LastNRanker.MAX_NUM_SAMPLED_SCORES = 4
     ranker = result_ranker.GetRanker(*self.ranker_params)
-    ranker.SetScores([4, 4, 5, 5])
+    ranker.SetScores([4, 4, 5, 5], 20)
     ranker.Add(4)
     ranker = result_ranker.GetRanker(*self.ranker_params)
     self.assertEqual([4, 4, 4, 5], ranker.scores)
-    self.assertEqual(4, ranker.GetMedian())
+    self.assertEqual((4, 21), ranker.GetMedianAndNumScores())

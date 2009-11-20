@@ -16,15 +16,12 @@
 
 """Shared models."""
 
-import re
 import logging
 import sys
 
 from google.appengine.ext import db
 from google.appengine.api import memcache
 from google.appengine.api.labs import taskqueue
-
-from models.user_agent import UserAgent
 
 BROWSER_NAV = (
   # version_level, label
@@ -45,18 +42,21 @@ TOP_BROWSERS = (
 )
 
 
-class BrowserCounter(db.Model):
-  """Track the number of results for each category/browsers/version level."""
+class CategoryBrowserManager(db.Model):
+  """Track the browsers that belong in each category/version level."""
 
-  category = db.StringProperty()
-  browsers = db.StringListProperty()
-  count = db.IntegerProperty(default=0, indexed=False)
+  MEMCACHE_NAMESPACE = 'category_level_browsers'
+
+  browsers = db.StringListProperty(default=[], indexed=False)
 
   @classmethod
-  def Increment(cls, category, browsers):
-    """Add the browser to the proper version-level groups.
+  def AddUserAgent(cls, category, user_agent):
+    """Adds a user agent's browser strings to version-level groups.
 
-    Add a browser for every version level.
+    AddUserAgent assumes that it does not receive overlapping calls.
+    - It should only get called by the update-user-groups task queue.
+
+    Adds a browser for every version level.
     If a level does not have a string, then use the one from the previous level.
     For example, "Safari 4.3" would increment the following:
         level  browser
@@ -66,134 +66,109 @@ class BrowserCounter(db.Model):
             3  Safari 4.3
     Args:
       category: a category string like 'network' or 'reflow'.
-      browsers: a list of browsers (e.g. ['Firefox', 'Firefox 3'])
+      user_agent: a UserAgent instance.
     """
-    logging.info('Increment: category=%s, browsers=%s', category, browsers)
-    # TODO(slamm): update memcached stats
-    def _IncrementTransaction():
-      if len(browsers) < 4:
-        browsers.extend(browsers[-1:] * (4 - len(browsers)))
-      key_name = cls.KeyName(category, browsers[-1])
-      counter = cls.get_by_key_name(key_name)
-      if counter is None:
-        counter = cls(key_name=key_name,
-                      category=category, browsers=browsers)
-      counter.count += 1
-      counter.put()
-    db.run_in_transaction(_IncrementTransaction)
+    ua_browsers = user_agent.get_string_list()
+    key_names = [cls.KeyName(category, version_level)
+                 for version_level in range(4)]
+    level_browsers = memcache.get_multi(key_names,
+                                        namespace=cls.MEMCACHE_NAMESPACE)
+
+    browser_key_names = []
+    for version_level, key_name in enumerate(key_names):
+      browser = ua_browsers[min(len(ua_browsers) - 1, version_level)]
+      if browser not in level_browsers.get(key_name, []):
+        browser_key_names.append((browser, key_name))
+    managers = cls.get_by_key_name([x[1] for x in browser_key_names])
+
+    updated_managers = []
+    memcache_mapping = {}
+    for (browser, key_name), manager in zip(browser_key_names, managers):
+      if manager is None:
+        manager = cls.get_or_insert(key_name)
+      if browser not in manager.browsers:
+        cls.InsortBrowser(manager.browsers, browser)
+        updated_managers.append(manager)
+        memcache_mapping[key_name] = manager.browsers
+    if updated_managers:
+      db.put(updated_managers)
+      memcache.set_multi(memcache_mapping, namespace=cls.MEMCACHE_NAMESPACE)
 
   @classmethod
-  def SetCount(cls, category, browsers, count):
-    """Set the browser to the proper version-level groups.
-
-    Add a browser for every version level.
-    If a level does not have a string, then use the one from the previous level.
-    For example, "Safari 4.3" would increment the following:
-        level  browser
-            0  Safari
-            1  Safari 4
-            2  Safari 4.3
-            3  Safari 4.3
-    Args:
-      category: a category string like 'network' or 'reflow'.
-      browsers: a list of browsers (e.g. ['Firefox', 'Firefox 3'])
-      count: an integer
-    """
-    # TODO(slamm): update memcached stats
-    def _SetTransaction():
-      if len(browsers) < 4:
-        browsers.extend(browsers[-1] * (4 - len(browsers)))
-      key_name = cls.KeyName(category, browsers[-1])
-      counter = cls.get_by_key_name(key_name)
-      if counter:
-        if counter.count != count:
-          counter.count = count
-          counter.put()
-      else:
-        counter = cls(key_name=key_name, category=category,
-                      browsers=browsers, count=count)
-        counter.put()
-    db.run_in_transaction(_SetTransaction)
-
-  @classmethod
-  def GetCounts(cls, category, version_level=None, browsers=None):
-    """Get all the browsers for one version level.
-
-    If both version_level and browser are unset, then the 'top' browsers
-    are used.
+  def GetBrowsers(cls, category, version_level):
+    """Get all the browsers for a version level.
 
     Args:
       category: a category string like 'network' or 'reflow'.
-      version_level (optional): 'top', 0 (family), 1 (major), 2 (minor), 3 (3rd)
-      browsers (optional): a list of browsers to use instead of version level
+      version_level: 'top', 0 (family), 1 (major), 2 (minor), 3 (3rd)
     Returns:
-      a dict of browser counts
-      e.g. {'Firefox 3.1': 5, 'Safari 4.0': 8, 'Safari 4.5': 3, ...}
+      ('Firefox 3.1', 'Safari 4.0', 'Safari 4.5', ...)
     """
-    if version_level == 'top' or (version_level is None and browsers is None):
+    if version_level == 'top':
       browsers = TOP_BROWSERS
-    if browsers:
-      browser_counts = cls.GetCountsByBrowsers(category, browsers)
     else:
-      browser_counts = {}
-      for counter in cls._GetCounters(category):
-        browser = counter.browsers[int(version_level)]
-        browser_counts.setdefault(browser, 0)
-        browser_counts[browser] += counter.count
-    return browser_counts
+      key_name = cls.KeyName(category, version_level)
+      browsers = memcache.get(key_name, namespace=cls.MEMCACHE_NAMESPACE)
+      if browsers is None:
+        manager = cls.get_by_key_name(key_name)
+        browsers = manager and manager.browsers or []
+        memcache.set(key_name, browsers, namespace=cls.MEMCACHE_NAMESPACE)
+    return browsers
 
   @classmethod
-  def GetCountsByBrowsers(cls, category, browsers):
-    """Get counts for a specific list of browsers.
+  def SetBrowsers(cls, category, version_level, browsers):
+    key_name = cls.KeyName(category, version_level)
+    memcache.set(key_name, browsers, namespace=cls.MEMCACHE_NAMESPACE)
+    manager = cls.get_or_insert(key_name)
+    manager.browsers = browsers
+    manager.put()
+
+
+  @classmethod
+  def SortBrowsers(cls, browsers):
+    """Sort browser strings in-place.
 
     Args:
-      category: a category string like 'network' or 'reflow'.
-      browsers: a list of browsers (e.g. ['Firefox', 'Firefox 3'])
-    Returns:
-      a dict of browser counts
-      e.g. {'Firefox 3.1': 5, 'Safari 4.0': 8, 'Safari 4.5': 3, ...}
+      browsers: a list of strings
+          e.g. ['iPhone 3.1', 'Firefox 3.01', 'Safari 4.1']
     """
-    browser_set = set(browsers)
-    browser_counts = dict((x, 0) for x in browsers)
-    for counter in cls._GetCounters(category):
-      browser_match = set(counter.browsers) & browser_set
-      if browser_match:
-        browser_counts[browser_match.pop()] += counter.count
-    return browser_counts
+    browsers.sort(key=lambda x: x.lower())
 
   @classmethod
-  def _GetCounters(cls, category):
-    query = cls.all().filter('category =', category)
-    counters = query.fetch(1000)
-    logging.info('Counters found: %s',
-                 ['%s, %s, %s' % (x.category, x.browsers, x.count) for x in counters])
-    if len(counters) > 900:
-      # TODO: Handle more than 1000 browsers in a category.
-      logging.warn('BrowserCounts(category=%s) will max out at 1000:'
-                   ' len(counters)=%s',
-                   category, len(counters))
-    return counters
+  def InsortBrowser(cls, browsers, browser):
+    """Insert a browser, in-place, into a sorted list of browsers.
+
+    Args:
+      browsers: a list of strings (e.g. ['iPhone 3.1', 'Safari 4.1'])
+      browser: a list of strings
+    """
+    lowercase_browser = browser.lower()
+    low, high = 0, len(browsers)
+    while low < high:
+      mid = (low + high) / 2
+      if lowercase_browser < browsers[mid].lower():
+        high = mid
+      else:
+        low = mid + 1
+    browsers.insert(low, browser)
 
   @classmethod
-  def KeyName(cls, category, browser):
-    return '%s_%s_browser' % (category, browser)
+  def KeyName(cls, category, version_level):
+    return '%s_%s' % (category, version_level)
 
 
 class CategoryStatsManager(object):
   """Manage statistics for a category."""
 
-  @classmethod
-  def GetStats(cls, test_set, version_level=None, browsers=None,
-               use_memcache=True):
-    """Get stats table for a given test_set.
+  MEMCACHE_NAMESPACE_PREFIX = 'category_stats_'
 
-    If version_level and browser are unset, then the 'top' browsers
-    are used.
+  @classmethod
+  def GetStats(cls, test_set, browsers, use_memcache=True):
+    """Get stats table for a given test_set.
 
     Args:
       test_set: a TestSet instance
-      version_level (optional): 'top', 0, 1, 2, or 3
-      browsers (optional): a list of browsers to use instead of version level
+      browsers: a list of browsers to use instead of version level
       use_memcache: whether to use memcache or not
     Returns:
       {
@@ -214,12 +189,50 @@ class CategoryStatsManager(object):
           ...
       }
     """
-    stats = {}
     category = test_set.category
-    counts = BrowserCounter.GetCounts(category, version_level, browsers)
-    if counts:
-      for browser in counts.keys():
-        medians = test_set.GetMedians(browser)
-        stats[browser] = test_set.GetStats(medians)
-        stats[browser]['total_runs'] = counts[browser]
+    if use_memcache:
+      memcache_params = cls.MemcacheParams(category)
+      stats = memcache.get_multi(browsers, **memcache_params)
+    for browser in browsers:
+      if browser not in stats:
+        medians, num_scores = test_set.GetMediansAndNumScores(browser)
+        stats[browser] = test_set.GetStats(medians, num_scores)
+    if use_memcache:
+      memcache.set_multi(stats, **memcache_params)
     return stats
+
+  @classmethod
+  def UpdateStatsCache(cls, test_set, user_agent):
+    category = test_set.category
+    ua_stats = {}
+    for browser in user_agent.get_string_list():
+      medians, num_scores = test_set.GetMediansAndNumScores(browser)
+      ua_stats[browser] = test_set.GetStats(medians, num_scores)
+    memcache.set_multi(ua_stats, **cls.MemcacheParams(category))
+
+  @classmethod
+  def MemcacheParams(cls, category):
+    return {
+        'namespace': '_'.join((cls.MEMCACHE_NAMESPACE_PREFIX, category))
+        }
+
+
+def UpdateCategory(category, user_agent):
+  CategoryBrowserManager.AddUserAgent(category, user_agent)
+  CategoryStatsManager.UpdateStatsCache(category, user_agent)
+
+
+def ScheduleCategoryUpdate(category, user_agent):
+  """Add a task to update a category's statistic.
+
+  The task is handled by base.cron.UserAgentGroup().
+  That method calls UpdateCategory().
+  """
+  task = taskqueue.Task(params={
+      'category': category,
+      'user_agent_key': user_agent.key(),
+      })
+  try:
+    task.add(queue_name='user-agent-group')
+  except:
+    logging.info('Cannot add task: %s:%s' % (sys.exc_type, sys.exc_value))

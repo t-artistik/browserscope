@@ -69,8 +69,8 @@ class TestBase(object):
       params_str = str(self.test_set.default_params)
     return result_ranker.GetRanker(self, browser, params_str)
 
-  def GetOrCreateRanker(self, browser, params_str=None):
-    return result_ranker.GetOrCreateRanker(self, browser, params_str)
+  def GetOrCreateRankers(self, browsers, params_str=None):
+    return result_ranker.GetOrCreateRankers(self, browsers, params_str)
 
   def IsVisible(self):
     return not hasattr(self, 'is_hidden_stat') or not self.is_hidden_stat
@@ -190,25 +190,36 @@ class TestSet(object):
     params_str = self.default_params and str(self.default_params) or None
     return result_ranker.GetRankers(tests, browser, params_str)
 
-  def GetMedians(self, browser):
+  def GetMediansAndNumScores(self, browser):
     """Return the raw scores for a given browser.
 
     Args:
       browser: a browser/version string like 'Firefox 3.0'.
     Returns:
-      {test_key_1: median_1, test_key_2: median_2, ...}
+      ({test_key_1: median_1, test_key_2: median_2},
+       {test_key_1: num_scores_1, test_key_2: num_scores_2})
     """
-    rankers = self.GetRankers(browser)
-    return dict((test.key, ranker.GetMedian())
-                for test, ranker in zip(self.tests, rankers) if ranker)
+    medians, num_scores = {}, {}
+    for test, ranker in zip(self.tests, self.GetRankers(browser)):
+      if ranker:
+        medians[test.key], num_scores[test.key] = ranker.GetMedianAndNumScores()
+    return medians, num_scores
 
-  def GetStats(self, raw_scores):
+  def GetStats(self, raw_scores, num_scores):
     """Get normalized scores, display values including summary values.
 
     Args:
-      raw_scores: {test_key_1: raw_score_1, test_key_2: raw_score_2, ...}
+      raw_scores: {
+          test_key_1: raw_score_1,
+          test_key_2: raw_score_2,
+          ...}
+      num_scores: {
+          test_key_1: num_scores_1,
+          test_key_2: num_scores_2,
+          ...}
     Returns:
       {
+          'total_runs': total_runs,
           'summary_score': summary_score,      # value is from 1 to 10
           'summary_display': summary_display,  # text to present
           'results': {
@@ -224,7 +235,9 @@ class TestSet(object):
       }
     """
     results = {}
+    total_runs = 0
     for test_key, raw_score in raw_scores.items():
+      total_runs = max(total_runs, num_scores[test_key])
       if raw_score is None:
         score, display = 0, ''
       elif self.IsVisibleTest(test_key):
@@ -243,6 +256,7 @@ class TestSet(object):
             }
     summary_score, summary_display = self.GetRowScoreAndDisplayValue(results)
     stats = {
+        'total_runs': total_runs,
         'summary_score': summary_score,
         'summary_display': summary_display,
         'results': results,

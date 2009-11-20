@@ -74,11 +74,12 @@ class TestGetStats(unittest.TestCase):
   def testGetStatsEmptyRawData(self):
     self.test_set = mock_data.MockTestSet()
     expected_stats = {
+        'total_runs': 0,
         'summary_score': 0,
         'summary_display': '0',
         'results': {},
         }
-    self.assertEqual(expected_stats, self.test_set.GetStats({}))
+    self.assertEqual(expected_stats, self.test_set.GetStats({}, {}))
 
   def testGetStats(self):
     # TODO(slamm): XXX more to do here

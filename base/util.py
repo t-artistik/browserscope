@@ -382,8 +382,6 @@ def Beacon(request):
       js_user_agent_string=js_user_agent_string)
   if not result_parent:
     return http.HttpResponse(BAD_BEACON_MSG + 'ResultParent')
-
-  manage_dirty.ScheduleDirtyUpdate()
   ScheduleRecentTestsUpdate()
 
   if callback:
@@ -419,42 +417,37 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
     opt_tests: list of tests.
     use_memcache: Use memcache or not.
   """
-  logging.info('GetStats for %s' % test_set.category)
+  category = test_set.category
+  logging.info('GetStats for %s' % category)
   version_level = request.GET.get('v', 'top')
-  override_static_mode = request.GET.get('sc')  # 'sc' for skip cache
+  is_skip_static = request.GET.get('sc')  # 'sc' for skip cache
   browser_param = request.GET.get('ua')
-  results_str = request.GET.get('%s_results' % test_set.category, '')
+  results_str = request.GET.get('%s_results' % category, '')
   current_user_agent_string = request.META['HTTP_USER_AGENT']
 
-  is_static_mode = (not override_static_mode and
-                    output in ('html', 'xhr') and
-                    test_set.category in settings.STATIC_CATEGORIES)
-  if is_static_mode:
-    # Use pickle'd data. We do this instead of saving HTML so we can
-    # integrate a user's results.
-    if settings.STATIC_SRC == 'local':
-      pickle_file = 'static_mode/%s_%s.py' % (
-          test_set.category, version_level)
-      stats_data = pickle.load(open(pickle_file, 'r'))
+  if (not is_skip_static and category in settings.STATIC_CATEGORIES
+      and output in ('html', 'xhr')):
+    # Use pickle'd data to which we can integrate a user's results.
+    static_source = settings.STATIC_SOURCE_FORMAT % {
+        'category': category,
+        'version_level': version_level
+        }
+    if static_source.startswith('http'):
+      response = urlfetch.fetch(static_source)
+      stats_data = pickle.loads(response.content)
     else:
-      url = '%s/%s_%s.py' % (
-          settings.STATIC_SRC, test_set.category, version_level)
-      result = urlfetch.fetch(url)
-      pickled_data = result.content
-      stats_data = pickle.loads(pickled_data)
-    logging.info('Retrieved static_mode stats_data.')
-
+      stats_data = pickle.load(open(static_source))
     browsers = stats_data.keys()
-    UserAgentGroup.SortBrowsers(browsers)
+    result_stats.CategoryBrowserManager.SortBrowsers(browsers)
+    logging.info('Retrieved static stats: category=%s', category)
   else:
     if browser_param:
       browsers = browser_param.split(',')
-      stats_data = result_stats.CategoryStatsManager.GetStats(
-          test_set, browsers=browsers, use_memcache=use_memcache)
     else:
-      stats_data = result_stats.CategoryStatsManager.GetStats(
-          test_set, version_level=version_level, use_memcache=use_memcache)
-      browsers = [x[0] for x in stats_data]
+      browsers = result_stats.CategoryBrowserManager.GetBrowsers(
+          category, version_level)
+    stats_data = result_stats.CategoryStatsManager.GetStats(
+        test_set, browsers=browsers, use_memcache=use_memcache)
 
   # If the output is pickle, we are done and need to return a string.
   if output == 'pickle':
@@ -472,12 +465,13 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
       break
   else:
     if results:
-      browsers.append(current_browser)
-      UserAgentGroup.SortBrowsers(browsers)
+      UserAgentGroup.InsortBrowser(browsers, current_browser)
 
   # Adds the current results into the stats_data dict.
   if results:
     current_stats = test_set.GetStats(results)
+    current_stats = test_set.GetStats(
+        dict((k, (v, 1)) for k, v in results.items()))
     browser_stats = stats_data.setdefault(current_browser, {})
     browser_stats['current_results'] = current_stats['results']
     browser_stats['current_score'] = current_stats['summary_score']
@@ -487,7 +481,7 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
   visible_tests = [test for test in tests if test.IsVisible()]
 
   params = {
-    'category': test_set.category,
+    'category': category,
     'category_name': test_set.category_name,
     'tests': visible_tests,
     'v': version_level,
@@ -553,8 +547,7 @@ def SeedDatastore(request):
 
   for user_agent_string in TOP_USER_AGENT_STRINGS:
     user_agent = UserAgent.factory(user_agent_string)
-    user_agent.update_groups()
-    logging.info(' - update_groups: %s', user_agent.pretty())
+    logging.info(' - user_agent: %s', user_agent.pretty())
   for category in categories:
     test_set = all_test_sets.GetTestSet(category)
     logging.info(' -- category: %s', category)
@@ -596,15 +589,15 @@ def UpdateDatastore(request):
   if key:
     query.filter('__key__ >', db.Key(key))
   query.order('__key__')
-  record = query.get()
-  if not record:
+  user_agent = query.get()
+  if not user_agent:
     return http.HttpResponse('All Done!')
 
-  record.update_groups()
+  # Do something with user_agent here.
 
   params = {
-    'next_url': '/update_datastore?key=%s' % record.key(),
-    'current_name': record.get_string_list(),
+    'next_url': '/update_datastore?key=%s' % user_agent.key(),
+    'current_name': user_agent.get_string_list(),
     'next_name': 'nextosity'
   }
   return Render(request, 'update_datastore.html', params)

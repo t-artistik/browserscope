@@ -34,7 +34,7 @@ class CountRanker(db.Model):
 
   counts = db.ListProperty(long, indexed=False)
 
-  def GetMedian(self):
+  def GetMedianAndNumScores(self):
     median = None
     num_scores = sum(self.counts)
     median_rank = num_scores / 2
@@ -44,7 +44,7 @@ class CountRanker(db.Model):
       index += count
       if median_rank < index:
         break
-    return median
+    return median, num_scores
 
   def Add(self, score):
     if score < self.MIN_SCORE:
@@ -68,39 +68,42 @@ class CountRanker(db.Model):
 
 class LastNRanker(db.Model):
   """Approximate the median by keeping the last MAX_SCORES scores."""
-  MAX_NUM_SCORES = 100
+  MAX_NUM_SAMPLED_SCORES = 100
 
   scores = db.ListProperty(long, indexed=False)
+  num_scores = db.IntegerProperty(default=0, indexed=False)
 
-  def GetMedian(self):
+  def GetMedianAndNumScores(self):
     """Return the median of the last N scores."""
-    num_scores = len(self.scores)
-    if num_scores:
-      return self.scores[num_scores / 2]
+    num_sampled_scores = len(self.scores)
+    if num_sampled_scores:
+      return self.scores[num_sampled_scores / 2], self.num_scores
     else:
-      return None
+      return None, 0
 
   def Add(self, score):
     """Add a score into the last N scores.
 
     If needed, drops the score that is furthest away from the given score.
     """
-    num_scores = len(self.scores)
-    if num_scores < self.MAX_NUM_SCORES:
+    num_sampled_scores = len(self.scores)
+    if num_sampled_scores < self.MAX_NUM_SAMPLED_SCORES:
       bisect.insort(self.scores, score)
     else:
       index_left = bisect.bisect_left(self.scores, score)
       index_right = bisect.bisect_right(self.scores, score)
       index_center = index_left + (index_right - index_left) / 2
       self.scores.insert(index_left, score)
-      if index_center < num_scores / 2:
+      if index_center < num_sampled_scores / 2:
         self.scores.pop()
       else:
         self.scores.pop(0)
+    self.num_scores += 1
     self.put()
 
-  def SetScores(self, scores):
+  def SetScores(self, scores, num_scores):
     self.scores = scores
+    self.num_scores = num_scores
     self.put()
 
 
@@ -169,3 +172,26 @@ def GetOrCreateRanker(test, browser, params_str=None):
   ranker_class = RankerClass(test.min_value, test.max_value)
   return ranker_class.get_or_insert(
       RankerKeyName(test.test_set.category, test.key, browser, params_str))
+
+def GetOrCreateRankers(test, browsers, params_str=None):
+  """Get or create a ranker that matches the given args.
+
+  Args:
+    test: an instance of a test_set_base.TestBase derived class.
+    browsers: a list of browsers like ['Firefox 3', 'Chrome 2.0.156'].
+    params_str: a string representation of test_set_params.Params.
+  Returns:
+    an instance of a RankerBase derived class.
+  """
+  rankers = []
+  ranker_class = RankerClass(test.min_value, test.max_value)
+  category, test_key = test.test_set.category, test.key
+  key_names = [RankerKeyName(category, test_key, browser, params_str)
+               for browser in browsers]
+  for key_name, ranker in zip(key_names,
+                              ranker_class.get_by_key_name(key_names)):
+    if ranker is None:
+      rankers.append(ranker_class.get_or_insert(key_name))
+    else:
+      rankers.append(ranker)
+  return rankers

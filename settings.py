@@ -62,9 +62,9 @@ INSTALLED_APPS = (
 CATEGORIES = ['network', 'acid3', 'selectors', 'richtext']
 
 STATIC_CATEGORIES = ['richtext']
-# Where we'll read the static files from. Either 'local' or an url.
-#STATIC_SRC = 'local'
-STATIC_SRC = 'http://static.latest.ua-profiler.appspot.com/static_mode'
+# Where we'll read the static files from (can be a local path or a url).
+#STATIC_SOURCE_FORMAT = 'static_mode/%(category)s_%(version_level)s.py'
+STATIC_SOURCE_FORMAT = 'http://static.latest.ua-profiler.appspot.com/static_mode/%(category)s_%(version_level)s.py'
 
 STATS_MEMCACHE_TIMEOUT = 0
 STATS_MEMCACHE_UA_ROW_NS = 'ua_row'

@@ -73,11 +73,15 @@ from appengine_django import have_django_zip
 from appengine_django import django_zip_path
 InstallAppengineHelperForDjango()
 
+from django.test import client
+
 from xml.sax.saxutils import unescape
 from google.appengine.ext import webapp
 from google.appengine.api import apiproxy_stub_map
 from google.appengine.api import datastore_file_stub
+from google.appengine.api import urlfetch
 from google.appengine.api.memcache import memcache_stub
+from google.appengine.api.labs.taskqueue import taskqueue_stub
 from google.appengine.ext.webapp.util import run_wsgi_app
 
 _LOCAL_TEST_DIR = 'test'  # location of files
@@ -421,6 +425,32 @@ def _test_suite_to_json(suite):
     return django.utils.simplejson.dumps(test_dict)
 
 
+class ExecuteImmediatelyTaskQueueService(taskqueue_stub.TaskQueueServiceStub):
+
+    def _Dynamic_Add(self, request, response):
+        # TODO(slamm): Handle task errors
+        taskqueue_stub.TaskQueueServiceStub._Dynamic_Add(self, request, response)
+        for queue in self.GetQueues():
+            queue_name = queue['name']
+            for task in self.GetTasks(queue_name):
+                headers = task['headers']
+                c = client.Client()
+                if task['method'] == 'GET':
+                    try:
+                        logging.info("Execute task immediately: GET %s", task['url'])
+                        c.get(task['url'], content_type=headers['Content-Type'])
+                    except:
+                        import traceback
+                        error = traceback.format_exc()
+                        print error
+                        _log_error(error)
+                elif task['method'] == 'POST':
+                    logging.info("Execute task immediately: POST %s, body=%s", task['url'], task['body'])
+                    c.post(task['url'], data=task['body'], content_type=task['headers']['Content-Type'])
+                else:
+                    raise NotImplementedError
+            self.FlushQueue(queue_name)
+
 def _run_test_suite(runner, suite):
     """Run the test suite.
 
@@ -438,9 +468,13 @@ def _run_test_suite(runner, suite):
        apiproxy_stub_map.apiproxy.RegisterStub(
            'memcache',
            memcache_stub.MemcacheServiceStub())# setup mock
+       apiproxy_stub_map.apiproxy.RegisterStub(
+           'taskqueue',
+           ExecuteImmediatelyTaskQueueService(root_path='.'))
        # Allow the other services to be used as-is for tests.
        for name in ['user', 'urlfetch', 'mail', 'images']:
            apiproxy_stub_map.apiproxy.RegisterStub(name, original_apiproxy.GetStub(name))
+       # TODO(slamm): add coverage tool here.
        runner.run(suite)
     finally:
        apiproxy_stub_map.apiproxy = original_apiproxy

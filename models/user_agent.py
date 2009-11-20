@@ -220,10 +220,6 @@ class UserAgent(db.Expando):
     """Returns a list of a strings suitable a StringListProperty."""
     return self.parts_to_string_list(self.family, self.v1, self.v2, self.v3)
 
-  def update_groups(self):
-    """Account for this user agent in the user agent groups."""
-    UserAgentGroup.UpdateGroups(self.get_string_list())
-
   @classmethod
   def factory(cls, string, **kwds):
     """Factory function.
@@ -261,11 +257,6 @@ class UserAgent(db.Expando):
                        v3=v3,
                        **kwds)
       user_agent.put()
-      try:
-        taskqueue.Task(method='GET', params={'key': user_agent.key()}
-                      ).add(queue_name='user-agent-group')
-      except:
-        logging.info('Cannot add task: %s:%s' % (sys.exc_type, sys.exc_value))
     return user_agent
 
 
@@ -364,13 +355,3 @@ class UserAgent(db.Expando):
   def parse_to_string_list(cls, pretty_string):
     """Parse a pretty string into string list."""
     return cls.parts_to_string_list(*cls.parse_pretty(pretty_string))
-
-  @classmethod
-  def SortBrowsers(cls, browsers):
-    """Sort browser strings in-place.
-
-    Args:
-      browsers: a list of strings
-          e.g. ['iPhone 3.1', 'Firefox 3.01', 'Safari 4.1']
-    """
-    browsers.sort(key=lambda x: x.lower())

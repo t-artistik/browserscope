@@ -19,6 +19,7 @@ import sys
 
 from google.appengine.ext import db
 from google.appengine.api import memcache
+from google.appengine.api.labs import taskqueue
 
 from categories import all_test_sets
 from categories import test_set_base
@@ -33,11 +34,9 @@ class ResultTime(db.Model):
   score = db.IntegerProperty()
   dirty = db.BooleanProperty(default=True)
 
-  def increment_all_counts(self):
+  def UpdateStats(self):
     for ranker in self.GetOrCreateRankers():
       ranker.Add(self.score)
-    self.dirty = False
-    self.put()
 
   def GetOrCreateRankers(self):
     parent = self.parent()
@@ -46,10 +45,9 @@ class ResultTime(db.Model):
       test = test_set.GetTest(self.test)
     except KeyError:
       logging.warn('Test key not found in test_set: %s', self.test)
-    else:
-      params_str = parent.params_str or None
-      for user_agent_string in parent.get_user_agent_list():
-        yield test.GetOrCreateRanker(user_agent_string, params_str)
+      return []
+    params_str = parent.params_str or None
+    return test.GetOrCreateRankers(parent.GetBrowsers(), params_str)
 
 
 class ResultParent(db.Expando):
@@ -116,26 +114,41 @@ class ResultParent(db.Expando):
                           score=values['score'],
                           dirty=not is_import))
     db.run_in_transaction(_AddResultInTransaction)
+    parent.ScheduleDirtyUpdate(parent.key())
     return parent
 
-  def CompleteDirtyProcessing(self)
-    result_stats.BrowserCounter.Increment(
-        self.category, self.get_user_agent_list())
-    self.invalidate_ua_memcache()
+  @classmethod
+  def ScheduleDirtyUpdate(cls, result_parent_key):
+    task = taskqueue.Task(
+        method='GET', params={'result_parent_key': result_parent_key})
+    task.add(queue_name='update-dirty')
 
-  def invalidate_ua_memcache(self):
-    memcache_ua_keys = ['%s_%s' % (self.category, user_agent)
-                        for user_agent in self.get_user_agent_list()]
-    #logging.debug('invalidate_ua_memcache, memcache_ua_keys: %s' %
-    #             memcache_ua_keys)
-    memcache.delete_multi(keys=memcache_ua_keys, seconds=0,
-                          namespace=settings.STATS_MEMCACHE_UA_ROW_NS)
+  @classmethod
+  def UpdateStatsFromDirty(cls, dirty_query):
+    """Aggregate the results of dirty ResultTime's.
 
-  def increment_all_counts(self):
+    Args:
+      dirty_query: a DirtyResultTimesQuery instance
+    """
+    dirty_result_times = dirty_query.Fetch()
+    if dirty_result_times:
+      result_parent = dirty_result_times[0].parent()
+      is_stats_update_needed = (result_parent.category in settings.CATEGORIES or
+                                settings.BUILD != 'production')
+      for result_time in dirty_result_times:
+        if is_stats_update_needed:
+          result_time.UpdateStats()
+        result_time.dirty = False
+      db.put(dirty_result_times)
+      if is_stats_update_needed and dirty_query.IsResultParentDone():
+        result_stats.ScheduleCategoryUpdate(result_parent.category,
+                                            result_parent.user_agent)
+
+  def UpdateStatsNonProduction(self):
     """This is not efficient enough to be used in prod."""
     result_times = self.GetResultTimes()
     for result_time in result_times:
-      result_time.increment_all_counts()
+      result_time.UpdateStats()
 
   def ResultTimesQuery(self):
     return ResultTime.all().ancestor(self)
@@ -147,61 +160,6 @@ class ResultParent(db.Expando):
     """Return a dict of scores indexed by test key names."""
     return dict((x.test, x.score) for x in self.GetResultTimes())
 
-  def get_user_agent_list(self):
-    """Get user_agent string list."""
+  def GetBrowsers(self):
+    """Get browser list (e.g. ['Firefox', 'Firefox 3', 'Firefox 3.5])."""
     return self.user_agent.get_string_list()
-
-  def get_score_and_display(self):
-    """Gets a row score for this ResultParent data set from the test_set.
-    """
-    # look in memcache first
-    memcache_key = str(self.key())
-    score_ns = 'SCORE_DISPLAY'
-
-    score_display = memcache.get(memcache_key, score_ns)
-    if score_display:
-      row_score = score_display['score']
-      row_display = score_display['display']
-      logging.info('get_score_and_display memcache for score: %s, display: %s' %
-                   (row_score, row_display))
-    else:
-      test_set = all_test_sets.GetTestSet(self.category)
-      result_times = self.GetResultTimes()
-      #logging.info('cat: %s, test_set: %s, %s' %
-      #             (self.category, test_set, len(result_times)))
-
-      results = {}
-      medians = {}
-      visible_tests = []
-      for result_time in result_times:
-        #logging.info('result_time.test: %s, .score: %s, key: %s' %
-        #             (result_time.test, result_time.score, result_time.key()))
-        medians[result_time.test] = result_time.score
-        test = test_set.GetTest(result_time.test)
-        if test is None:
-          continue
-        if not hasattr(test, 'is_hidden_stat') or not test.is_hidden_stat:
-          visible_tests.append(test)
-
-      for test in visible_tests:
-        score, display = base.util.GetScoreAndDisplayValue(
-            test, medians[test.key], medians)
-        #logging.info('%s score %s, display: %s' % (test.key, score, display))
-        results[test.key] = {
-          'score': score,
-          'median': medians[test.key],
-          'display': display
-        }
-      row_score, row_display = test_set.GetRowScoreAndDisplayValue(results)
-      #logging.info('get_score_and_display, row_score: %s, row_display: %s' %
-      #             (row_score, row_display))
-      score_display = {
-        'score': row_score,
-        'display': row_display
-      }
-      memcache.set(key=memcache_key, value=score_display, time=300,
-          namespace=score_ns)
-      logging.info('set memcache for key: %s, score: %s, display: %s' %
-                   (memcache_key, score, display))
-
-    return row_score, row_display

@@ -28,84 +28,64 @@ from models.result import ResultParent
 import mock_data
 
 
-class BrowserCounterTest(unittest.TestCase):
+class CategoryBrowserManagerTest(unittest.TestCase):
 
   def setUp(self):
-    db.delete(result_stats.BrowserCounter.all(keys_only=True).fetch(1000))
+    db.delete(result_stats.CategoryBrowserManager.all(keys_only=True).fetch(1000))
 
   def tearDown(self):
-    db.delete(result_stats.BrowserCounter.all(keys_only=True).fetch(1000))
+    db.delete(result_stats.CategoryBrowserManager.all(keys_only=True).fetch(1000))
 
   def testEmpty(self):
-    self.assertEqual(
-        {}, result_stats.BrowserCounter.GetCounts('network', 1))
+    category = 'network'
+    version_level = 1
+    browsers = result_stats.CategoryBrowserManager.GetBrowsers(
+        category, version_level)
+    self.assertEqual([], browsers)
 
-  def testIncrementOne(self):
-    result_stats.BrowserCounter.Increment(
-        'cat', ['Firefox', 'Firefox 3', 'Firefox 3.5'])
-    self.assertEqual({'Firefox': 1},
-                     result_stats.BrowserCounter.GetCounts('cat', 0))
-    self.assertEqual({'Firefox 3': 1},
-                     result_stats.BrowserCounter.GetCounts('cat', 1))
-    self.assertEqual({'Firefox 3.5': 1},
-                     result_stats.BrowserCounter.GetCounts('cat', 2))
-    self.assertEqual({'Firefox 3.5': 1},
-                     result_stats.BrowserCounter.GetCounts('cat', 3))
-
-  def testIncrementMultiple(self):
-    result_stats.BrowserCounter.Increment(
-        'cat', ['Firefox', 'Firefox 3', 'Firefox 3.5'])
-    result_stats.BrowserCounter.Increment(
-        'other cat', ['Firefox', 'Firefox 3', 'Firefox 3.5'])
-    result_stats.BrowserCounter.Increment(
-        'cat', ['Firefox', 'Firefox 3', 'Firefox 3.0', 'Firefox 3.0.7'])
-    result_stats.BrowserCounter.Increment(
-        'cat', ['Chrome', 'Chrome 4', 'Chrome 4.0', 'Chrome 4.0.32'])
-    self.assertEqual({'Firefox': 2, 'Chrome': 1},
-                     result_stats.BrowserCounter.GetCounts('cat', 0))
-    self.assertEqual({'Firefox 3': 2, 'Chrome 4': 1},
-                     result_stats.BrowserCounter.GetCounts('cat', 1))
-    self.assertEqual({'Firefox 3.5': 1, 'Firefox 3.0': 1, 'Chrome 4.0': 1},
-                     result_stats.BrowserCounter.GetCounts('cat', 2))
-    self.assertEqual({'Firefox 3.5': 1, 'Firefox 3.0.7': 1, 'Chrome 4.0.32': 1},
-                     result_stats.BrowserCounter.GetCounts('cat', 3))
-    self.assertEqual({'Firefox': 1},
-                     result_stats.BrowserCounter.GetCounts('other cat', 0))
+  def testAddUserAgentBasic(self):
+    category = 'network'
+    result_stats.CategoryBrowserManager.AddUserAgent(
+        category, mock_data.GetUserAgent('3.5'))
+    result_stats.CategoryBrowserManager.AddUserAgent(
+        category, mock_data.GetUserAgent('3.0.6'))
+    for version_level, expected_browsers in enumerate((
+        ['Firefox'],
+        ['Firefox 3'],
+        ['Firefox 3.0', 'Firefox 3.5'],
+        ['Firefox 3.0.6', 'Firefox 3.5'])):
+      browsers = result_stats.CategoryBrowserManager.GetBrowsers(
+        category, version_level)
+      self.assertEqual(expected_browsers, browsers)
 
   def testGetBrowserTotalsTop(self):
-    result_stats.BrowserCounter.Increment(
-        'cat', ['IE', 'IE 6', 'IE 6.0'])
-    result_stats.BrowserCounter.Increment(
-        'cat', ['IE', 'IE 6', 'IE 6.1'])
-    result_stats.BrowserCounter.Increment(
-        'cat', ['Firefox', 'Firefox 3', 'Firefox 3.0', 'Firefox 3.0.7'])
-    expected_counts = dict((x, 0) for x in result_stats.TOP_BROWSERS)
-    expected_counts['IE 6'] = 2
-    expected_counts['Firefox 3.0'] = 1
-    self.assertEqual(expected_counts,
-                     result_stats.BrowserCounter.GetCounts('cat', 'top'))
+    expected_browsers = result_stats.TOP_BROWSERS
+    browsers = result_stats.CategoryBrowserManager.GetBrowsers(
+        category='foo', version_level='top')
+    self.assertEqual(expected_browsers, browsers)
 
-
-  def testSetCount(self):
-    result_stats.BrowserCounter.SetCount(
-        'cat', ['IE', 'IE 6', 'IE 6.0'], 8)
-    self.assertEqual({'IE': 8},
-                     result_stats.BrowserCounter.GetCounts('cat', 0))
-    # First call creates the db record.
-    result_stats.BrowserCounter.SetCount(
-        'cat', ['IE', 'IE 6', 'IE 6.0'], 16)
-    self.assertEqual({'IE': 16},
-                     result_stats.BrowserCounter.GetCounts('cat', 0))
-
+  def testSetBrowsers(self):
+    category = 'basil'
+    version_level = 1
+    expected_browsers = ['Firefox 3.0', 'IE 8', 'Safari 5.8.2']
+    result_stats.CategoryBrowserManager.SetBrowsers(
+        category, version_level, expected_browsers)
+    browsers = result_stats.CategoryBrowserManager.GetBrowsers(
+        category, version_level)
+    self.assertEqual(expected_browsers, browsers)
+    # memcache
+    # db
 
 
 class CategoryStatsManagerTest(unittest.TestCase):
 
+  MANAGER_QUERY = result_stats.CategoryBrowserManager.all(keys_only=True)
+
   def setUp(self):
-    db.delete(result_stats.BrowserCounter.all(keys_only=True).fetch(1000))
+    db.delete(self.MANAGER_QUERY.fetch(1000))
 
   def tearDown(self):
-    db.delete(result_stats.BrowserCounter.all(keys_only=True).fetch(1000))
+    db.delete(self.MANAGER_QUERY.fetch(1000))
 
   def testGetStats(self):
     test_set = mock_data.MockTestSet()
@@ -121,7 +101,6 @@ class CategoryStatsManagerTest(unittest.TestCase):
       parent = ResultParent.AddResult(
           test_set, '12.2.2.25', mock_data.GetUserAgentString(firefox_version),
           'apple=%s,banana=%s,coconut=%s' % scores)
-      parent.increment_all_counts()
     level_1_stats = {
         'Firefox 3': {
             'summary_score': 605,
@@ -135,7 +114,7 @@ class CategoryStatsManagerTest(unittest.TestCase):
             }
         }
     self.assertEqual(level_1_stats, result_stats.CategoryStatsManager.GetStats(
-        test_set, version_level=1))
+        test_set, browsers=('Firefox 3',)))
 
     level_3_stats = {
         'Firefox 3.0.6': {
@@ -160,4 +139,4 @@ class CategoryStatsManagerTest(unittest.TestCase):
             },
         }
     self.assertEqual(level_3_stats, result_stats.CategoryStatsManager.GetStats(
-        test_set, version_level=3))
+        test_set, browsers=('Firefox 3.0.6', 'Firefox 3.5')))

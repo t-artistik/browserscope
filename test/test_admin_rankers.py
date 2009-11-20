@@ -143,7 +143,6 @@ class TestRebuildRankers(unittest.TestCase):
     result = ResultParent.AddResult(
         test_set, '12.2.2.25', USER_AGENT_STRINGS['Firefox 3.0.6'],
         'testDisplay=500,testVisibility=200')
-    result.increment_all_counts()
     params = {}
     response = self.client.get('/admin/rankers/rebuild', params)
     self.assertEqual(200, response.status_code)
@@ -173,7 +172,6 @@ class TestRebuildRankers(unittest.TestCase):
       result = ResultParent.AddResult(
           test_set, '12.2.2.25', USER_AGENT_STRINGS['Firefox %s' % version],
           'testDisplay=%s,testVisibility=%s' % scores, params_str=params_str)
-      result.increment_all_counts()
     params = {'fetch_limit': 2}
     request_count = 0
     while not params.get('is_done', False):
