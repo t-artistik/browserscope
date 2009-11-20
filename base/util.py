@@ -447,7 +447,7 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
       browsers = result_stats.CategoryBrowserManager.GetBrowsers(
           category, version_level)
     stats_data = result_stats.CategoryStatsManager.GetStats(
-        test_set, browsers=browsers, use_memcache=use_memcache)
+        test_set, browsers, use_memcache=use_memcache)
 
   # If the output is pickle, we are done and need to return a string.
   if output == 'pickle':
@@ -470,8 +470,6 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
   # Adds the current results into the stats_data dict.
   if results:
     current_stats = test_set.GetStats(results)
-    current_stats = test_set.GetStats(
-        dict((k, (v, 1)) for k, v in results.items()))
     browser_stats = stats_data.setdefault(current_browser, {})
     browser_stats['current_results'] = current_stats['results']
     browser_stats['current_score'] = current_stats['summary_score']

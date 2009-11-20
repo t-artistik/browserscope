@@ -205,7 +205,7 @@ class TestSet(object):
         medians[test.key], num_scores[test.key] = ranker.GetMedianAndNumScores()
     return medians, num_scores
 
-  def GetStats(self, raw_scores, num_scores):
+  def GetStats(self, raw_scores, num_scores=None):
     """Get normalized scores, display values including summary values.
 
     Args:
@@ -237,18 +237,19 @@ class TestSet(object):
     results = {}
     total_runs = 0
     for test_key, raw_score in raw_scores.items():
-      total_runs = max(total_runs, num_scores[test_key])
       if raw_score is None:
         score, display = 0, ''
       elif self.IsVisibleTest(test_key):
+        if num_scores:
+          total_runs = max(total_runs, num_scores[test_key])
         if self.IsBooleanTest(test_key):
           if raw_score:
             score, display = 10, settings.STATS_SCORE_TRUE
           else:
             score, display = 1, settings.STATS_SCORE_FALSE
         else:
-          score, display = self.GetTestScoreAndDisplayValue(
-              test_key, raw_scores)
+          score, display = (
+              self.GetTestScoreAndDisplayValue(test_key, raw_scores))
         results[test_key] = {
             'raw_score': raw_score,
             'score': score,
@@ -256,11 +257,12 @@ class TestSet(object):
             }
     summary_score, summary_display = self.GetRowScoreAndDisplayValue(results)
     stats = {
-        'total_runs': total_runs,
         'summary_score': summary_score,
         'summary_display': summary_display,
         'results': results,
         }
+    if num_scores:
+      stats['total_runs'] = total_runs
     return stats
 
   def GetTestScoreAndDisplayValue(self, test_key, raw_scores):

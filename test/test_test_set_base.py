@@ -74,16 +74,72 @@ class TestGetStats(unittest.TestCase):
   def testGetStatsEmptyRawData(self):
     self.test_set = mock_data.MockTestSet()
     expected_stats = {
-        'total_runs': 0,
         'summary_score': 0,
         'summary_display': '0',
         'results': {},
         }
     self.assertEqual(expected_stats, self.test_set.GetStats({}, {}))
 
+  def testGetStatsNoNumScores(self):
+    test_set = mock_data.MockTestSet()
+    test_set.GetTest('banana').is_hidden_stat = True
+    raw_scores = {
+        'apple': 1,
+        'banana': 2,
+        'coconut': 3,
+        }
+    expected_stats = {
+        'summary_score': 16,
+        'summary_display': '4',
+        'results': {
+            'apple': {
+                'raw_score': 1,
+                'score': 10,
+                'display': 'yes'
+                },
+            'coconut': {
+                'raw_score': 3,
+                'score': 6,
+                'display': 'd:6'
+                },
+            }
+        }
+    stats = test_set.GetStats(raw_scores)
+    self.assertEqual(expected_stats, stats)
+
   def testGetStats(self):
-    # TODO(slamm): XXX more to do here
-    pass
+    test_set = mock_data.MockTestSet()
+    test_set.GetTest('apple').is_hidden_stat = True
+    raw_scores = {
+        'apple': 1,
+        'banana': 2,
+        'coconut': 3,
+        }
+    num_scores = {
+        'apple': 100,
+        'banana': 10,
+        'coconut': 1,
+        }
+    expected_stats = {
+        'summary_score': 10,
+        'summary_display': '5',
+        'total_runs': 10,
+        'results': {
+            'coconut': {
+                'raw_score': 3,
+                'score': 6,
+                'display': 'd:6'
+                },
+            #'apple': {'score': 10, 'raw_score': 1, 'display': 'yes'},
+            'banana': {
+                'raw_score': 2,
+                'score': 4,
+                'display': 'd:4'
+                }
+            }
+        }
+    stats = test_set.GetStats(raw_scores, num_scores)
+    self.assertEqual(expected_stats, stats)
 
 
 class TestConvert100to10Base(unittest.TestCase):

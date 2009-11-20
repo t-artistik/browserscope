@@ -21,6 +21,7 @@ __author__ = 'slamm@google.com (Stephen Lamm)'
 import logging
 import unittest
 
+from google.appengine.api import memcache
 from google.appengine.ext import db
 from models import result_stats
 from models.result import ResultParent
@@ -32,9 +33,11 @@ class CategoryBrowserManagerTest(unittest.TestCase):
 
   def setUp(self):
     db.delete(result_stats.CategoryBrowserManager.all(keys_only=True).fetch(1000))
+    memcache.flush_all()
 
   def tearDown(self):
     db.delete(result_stats.CategoryBrowserManager.all(keys_only=True).fetch(1000))
+    memcache.flush_all()
 
   def testEmpty(self):
     category = 'network'
@@ -58,11 +61,30 @@ class CategoryBrowserManagerTest(unittest.TestCase):
         category, version_level)
       self.assertEqual(expected_browsers, browsers)
 
-  def testGetBrowserTotalsTop(self):
+  def testGetBrowsersTop(self):
     expected_browsers = result_stats.TOP_BROWSERS
     browsers = result_stats.CategoryBrowserManager.GetBrowsers(
         category='foo', version_level='top')
     self.assertEqual(expected_browsers, browsers)
+
+  def testGetBrowsersDbAndMemcacheUse(self):
+    category = 'network'
+    version_level = 3
+    cls = result_stats.CategoryBrowserManager
+    cls.AddUserAgent(category, mock_data.GetUserAgent('3.5'))
+    self.assertEqual(['Firefox 3.5'], cls.GetBrowsers(category, version_level))
+
+    # Load browsers from db into memcache and return.
+    memcache.flush_all()
+    self.assertEqual(['Firefox 3.5'], cls.GetBrowsers(category, version_level))
+
+    # Load browsers memcache (db is not changed).
+    cls.get_by_key_name(cls.KeyName(category, version_level)).delete()
+    self.assertEqual(['Firefox 3.5'], cls.GetBrowsers(category, version_level))
+
+    # db and memcache are cleared.
+    memcache.flush_all()
+    self.assertEqual([], cls.GetBrowsers(category, version_level))
 
   def testSetBrowsers(self):
     category = 'basil'
@@ -73,8 +95,30 @@ class CategoryBrowserManagerTest(unittest.TestCase):
     browsers = result_stats.CategoryBrowserManager.GetBrowsers(
         category, version_level)
     self.assertEqual(expected_browsers, browsers)
-    # memcache
-    # db
+
+  def testSetBrowsersDbAndMemcacheUse(self):
+    category = 'basil'
+    version_level = 1
+    expected_browsers = ['Firefox 3.0', 'IE 8', 'Safari 5.8.2']
+    result_stats.CategoryBrowserManager.SetBrowsers(
+        category, version_level, expected_browsers)
+    browsers = result_stats.CategoryBrowserManager.GetBrowsers(
+        category, version_level)
+    self.assertEqual(expected_browsers, browsers)
+
+  def testSortBrowsers(self):
+    cls = result_stats.CategoryBrowserManager
+    browsers = ['iPhone 1.1', 'Safari 5.0', 'Firefox 3.5', 'Firefox 3.0']
+    cls.SortBrowsers(browsers)
+    self.assertEqual(['Firefox 3.0', 'Firefox 3.5', 'iPhone 1.1', 'Safari 5.0'],
+                     browsers)
+
+  def testInsortBrowser(self):
+    cls = result_stats.CategoryBrowserManager
+    browsers = ['Firefox 3.0', 'Firefox 3.5', 'Safari 5.0']
+    cls.InsortBrowser(browsers, 'iPhone 1.1')
+    self.assertEqual(['Firefox 3.0', 'Firefox 3.5', 'iPhone 1.1', 'Safari 5.0'],
+                     browsers)
 
 
 class CategoryStatsManagerTest(unittest.TestCase):
