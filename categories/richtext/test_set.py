@@ -64,7 +64,8 @@ class IndividualRichtextTest(RichtextTest):
         url=self.TESTS_URL_PATH,
         doc=None,
         min_value=0,
-        max_value=1)
+        max_value=1,
+        is_hidden_stat=True)
 
 
 class ApplyRichtextTest(IndividualRichtextTest):

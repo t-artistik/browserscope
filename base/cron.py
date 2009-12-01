@@ -22,10 +22,10 @@ __author__ = 'elsigh@google.com (Lindsey Simon)'
 from google.appengine.api import memcache
 from google.appengine.ext import db
 
-
 import django
 from django import http
 
+from categories import all_test_sets
 from models import result_stats
 from models.result import ResultParent
 from models.user_agent import UserAgent
@@ -53,25 +53,41 @@ def UserAgentGroup(request):
 
 
 def UpdateRecentTests(request):
-  query = db.Query(ResultParent)
-  query.order('-created')
-  recent_tests = query.fetch(30, 0)
+  max_recent_tests = 10
+  skip_categories = settings.CATEGORIES_INVISIBLE + settings.CATEGORIES_BETA
 
-  # need to get the score for a test
-  recent_tests_list = []
-  for recent_test in recent_tests:
-    if len(recent_tests_list) == 10:
-      break
+  prev_recent_tests = memcache.get(util.RECENT_TESTS_MEMCACHE_KEY)
+  prev_result_parent_key = None
+  if prev_recent_tests:
+    prev_result_parent_key = prev_recent_tests[0]['result_parent_key']
+
+  recent_tests = []
+  recent_query = db.Query(ResultParent).order('-created')
+  for result_parent in recent_query.fetch(30):
     if (settings.BUILD == 'production' and
-        recent_test.category in settings.CATEGORIES_INVISIBLE +
-        settings.CATEGORIES_BETA):
+        recent_parent.category in skip_categories):
       continue
-    score, display = recent_test.get_score_and_display()
-    recent_test.score = score
-    recent_test.display = display
-    recent_test.user_agent_pretty = recent_test.user_agent.pretty()
-    recent_tests_list.append(recent_test)
+    if str(result_parent.key()) == prev_result_parent_key:
+      num_needed = max_recent_tests - len(recent_tests)
+      if num_needed == max_recent_tests:
+        return http.HttpResponse('No update needed.')
+      else:
+        recent_tests.extend(prev_recent_tests[:num_needed])
+        break
+    recent_scores = result_parent.GetResults()
+    test_set = all_test_sets.GetTestSet(result_parent.category)
+    recent_stats = test_set.GetStats(recent_scores)
+    recent_tests.append({
+        'result_parent_key': str(result_parent.key()),
+        'category': result_parent.category,
+        'created': result_parent.created,
+        'user_agent_pretty': result_parent.user_agent.pretty(),
+        'score': recent_stats['summary_score'],
+        'display': recent_stats['summary_display'],
+        })
+    if len(recent_tests) >= max_recent_tests:
+      break
 
-  memcache.set(key=util.RECENT_TESTS_MEMCACHE_KEY, value=recent_tests_list,
+  memcache.set(util.RECENT_TESTS_MEMCACHE_KEY, recent_tests,
                time=settings.STATS_MEMCACHE_TIMEOUT)
   return http.HttpResponse('Done')
