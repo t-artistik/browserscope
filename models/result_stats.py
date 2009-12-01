@@ -33,7 +33,7 @@ BROWSER_NAV = (
 )
 
 TOP_BROWSERS = (
-  'Chrome 2', 'Chrome 3', 'Chrome 4',
+  'Chrome 3', 'Chrome 4',
   'Firefox 3.0', 'Firefox 3.5',
   'IE 6', 'IE 7', 'IE 8',
   'iPhone 2.2', 'iPhone 3.1',
@@ -156,6 +156,11 @@ class CategoryBrowserManager(db.Model):
   def KeyName(cls, category, version_level):
     return '%s_%s' % (category, version_level)
 
+  @classmethod
+  def DeleteMemcacheValue(cls, category, version_level):
+    key_name = cls.KeyName(category, version_level)
+    memcache.delete(key_name, namespace=cls.MEMCACHE_NAMESPACE)
+
 
 class CategoryStatsManager(object):
   """Manage statistics for a category."""
@@ -215,6 +220,10 @@ class CategoryStatsManager(object):
     return {
         'namespace': '_'.join((cls.MEMCACHE_NAMESPACE_PREFIX, category))
         }
+
+  @classmethod
+  def DeleteMemcacheValues(cls, category, browsers):
+    memcache.delete_multi(browsers, **cls.MemcacheParams(category))
 
 
 def UpdateCategory(category, user_agent):

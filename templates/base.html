@@ -2,8 +2,8 @@
 <html>
 <head>
   <title>
-    {% if app_category %}
-      {{ app_categories|by_key:app_category_index|by_key:1}} -
+    {% if app_category_name %}
+      {{ app_category_name }} -
     {% endif %}
     {% if page_title %}
       {{ page_title }} -
@@ -64,7 +64,7 @@
       <a
         href="/{{ app_category }}/test"
         class="bs-bc"
-        target="_top">Go to the {{ app_category_name }} Tests</a>
+        target="_top"><strong>Go to the {{ app_category_name }} Tests &raquo;</strong></a>
     {% endifequal %}
 
     {% block body %}{% endblock %}
@@ -86,7 +86,7 @@
     var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
     document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
     </script>
-    <script type="text/javascript">
+    <script>
     try {
     var pageTracker = _gat._getTracker("UA-9733170-1");
     pageTracker._trackPageview();

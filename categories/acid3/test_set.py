@@ -68,7 +68,7 @@ class Acid3TestSet(test_set_base.TestSet):
     """
     raw_score = raw_scores.get(test_key, 0)
     if raw_score:
-      return self.Convert100Base10(raw_score), '%s/100' % raw_score
+      return self.Convert100to10Base(raw_score), '%s/100' % raw_score
     else:
       return 0, ''
 

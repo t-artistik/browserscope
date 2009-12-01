@@ -1,23 +1,25 @@
 {% spaceless %}
-<div id="rt-{{ category }}" class="rt">
-  <table id="rt-{{ category }}-t" cellpadding="0" cellspacing="0">
+<div class="rt">
+  <table class="rt-t" cellpadding="0" cellspacing="0">
     <thead>
       <tr>
         <th scope="col" class="rt-ua">
-          <form id="rt-{{ category }}-v-f" action="" method="get">
-            <input type="hidden" name="category" value="{{ category }}">
-            <input type="hidden" name="{{ category }}_results" value="{{ results_uri_string }}">
-            <select id="rt-{{ category }}-v" name="v">
-              {% for version, version_label in browser_nav %}
-                <option
-                  value="{{ version }}"
-                  {% ifequal v version %}selected="selected"{% endifequal %}
-                  >{{ version_label }}</option>
-              {% endfor %}
-            </select>
-            <input id="rt-{{ category }}-v-s" type="submit" value="go">
-          </form>
-          name
+          <div class="rt-b-f">
+            <form action="" method="get">
+              <input type="hidden" name="category" value="{{ category }}">
+              <input type="hidden" name="{{ category }}_results" value="{{ results_uri_string }}">
+              <select name="v">
+                {% for version, version_label in browser_nav %}
+                    <option
+                      value="{{ version }}"
+                      {% ifequal v version %}selected="selected"{% endifequal %}
+                      >{{ version_label }}</option>
+                {% endfor %}
+              </select>
+              <input class="rt-v-s" type="submit" value="go">
+            </form>
+          </div>
+          <span>name</span>
         </th>
         <th class="rt-ua-s-d">
           {% ifnotequal category "acid3" %}
@@ -26,7 +28,7 @@
         </th>
 
         {% for test in tests %}
-          <th scope="col">
+          <th scope="col" title="{{ test.doc }}">
             {{ test.name }}
           </th>
         {% endfor %}
@@ -37,7 +39,7 @@
       {% for user_agent in user_agents %}
         {% with stats|by_key:user_agent|by_key:"current_results" as results %}
           {% if results %}
-            <tr id="rt-{{ category }}-ua-s-r" class="rt-ua-s-hdr">
+            <tr class="rt-ua-s-hdr rt-ua-s-r">
               <td class="rt-ua">Your Test Results &darr;</td>
               <td class="rt-ua-s-d"></td>
               <td colspan="{{ tests|length|add:1 }}"></td>
@@ -47,7 +49,7 @@
                 scope="row"
                 class="rt-ua rt-ua-s-{{ stats|by_key:user_agent|by_key:"current_score" }}">
                 <span class="bs-cur-ua goog-inline-block"></span>
-                <span id="rt-{{ category }}-cur-ua">{{ user_agent }}</span>
+                <span class="rt-cur-ua">{{ user_agent }}</span>
               </td>
               <td
                 class="rt-ua-s-d rt-ua-s-{{ stats|by_key:user_agent|by_key:"current_score" }}">
@@ -89,9 +91,9 @@
               {% ifequal user_agent current_user_agent %}
                 <span class="bs-cur-ua goog-inline-block"></span>
               {% endifequal %}
-              <span>{{ user_agent }}</span>
+              <span class="bs-ua-n">{{ user_agent }}</span>
               {% if is_admin %}
-                <!--<a href="/clear_memcache?category={{ category }}&ua={{ user_agent }}&continue={{ request_path }}" class="bs-admin">clear</a>-->
+                &nbsp;<a href="/clear_memcache?category={{ category }}&ua={{ user_agent }}&continue={{ request_path|urlencode }}" class="bs-admin">x</a>
               {% endif %}
             </td>
 
@@ -142,7 +144,7 @@
       {{ stats|by_key:"total_runs" }} tests from {{ stats|length|add:"-1"}} browsers
     {% endif %}
 
-    <span id="rt-dl-{{category }}" class="bs-results-dl">
+    <span class="bs-results-dl">
       <span>Downloads:</span>
       <a class="bs-dl-py" href="/?category={{ category }}&v={{ v }}&o=pickle"
         >pickle</a>

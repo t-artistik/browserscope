@@ -16,11 +16,20 @@
  * @author elsigh@google.com (Lindsey Simon)
  */
 
-/**
- * Namespace for utility functions.
- * @type {Object}
- */
-var Util = {};
+
+goog.provide('Util');
+goog.provide('Util.ResultTablesController');
+goog.provide('Util.ResultTable');
+goog.provide('Util.TestDriver');
+
+goog.require('goog.dom');
+goog.require('goog.events');
+goog.require('goog.net.XhrIo');
+goog.require('goog.net.cookies');
+goog.require('goog.ui.TableSorter');
+goog.require('goog.ui.Tooltip');
+goog.require('goog.userAgent');
+
 
 /**
  * Adds CSS text to the DOM.
@@ -29,7 +38,7 @@ var Util = {};
  * @return {Element} cssNode the added css DOM node.
  */
 Util.addCssText = function(cssText, opt_id) {
-  var cssNode = document.createElement('style');
+  var cssNode = goog.dom.createElement('style');
   cssNode.type = 'text/css';
   cssNode.id = opt_id ? opt_id : 'cssh-sheet-' + document.styleSheets.length;
 
@@ -41,7 +50,7 @@ Util.addCssText = function(cssText, opt_id) {
     cssNode.styleSheet.cssText = cssText;
   // W3C
   } else {
-    var cssText = document.createTextNode(cssText);
+    cssText = goog.dom.createTextNode(cssText);
     cssNode.appendChild(cssText);
   }
 
@@ -51,12 +60,12 @@ Util.addCssText = function(cssText, opt_id) {
 
 /**
  * Preserve scope in timeouts.
- * @type {Object} scope
- * @type {Function} fn
+ * @param {Object} scope
+ * @param {Function} fn
  * @return {Function}
  */
 Util.curry = function(scope, fn) {
-  var scope = scope || window;
+  scope = scope || window;
   var args = [];
   for (var i = 2, len = arguments.length; i < len; ++i) {
     args.push(arguments[i]);
@@ -80,15 +89,17 @@ Util.isInternetExplorer = function() {
  * Read url param value from href.
  * @param {string} param The param to look for.
  * @param {boolean} opt_win Use top instead of the current window.
+ * @param {boolean} opt_url Use url instead of location.href.
  * @return {string} The value of the param or an empty string.
  * @export
  */
-Util.getParam = function(param, opt_win) {
+Util.getParam = function(param, opt_win, opt_url) {
   var win = opt_win || window;
+  var url = opt_url || win.location.href
   param = param.replace(/[\[]/, '\\\[').replace(/[\]]/, '\\\]');
   var regexString = '[\\?&]' + param + '=([^&#]*)';
   var regex = new RegExp(regexString);
-  var results = regex.exec(win.location.href);
+  var results = regex.exec(url);
   if (results == null) {
     return '';
   } else {
@@ -98,18 +109,18 @@ Util.getParam = function(param, opt_win) {
 
 
 /**
- * @param {IFRAMEElement} iframe
- * @return {string} The iframe's id.
+ * @param {string} iframeId
+ * @return {?string} The iframe's id.
  * @export
  */
 Util.getIframeDocument = function(iframeId) {
   var doc;
   var iframe = window.frames[iframeId];
   if (!iframe) {
-    iframe = document.getElementById(iframeId);
+    iframe = goog.dom.$(iframeId);
   }
   if (!iframe) {
-    return;
+    return null;
   }
   if (iframe.contentDocument) {
     // For NS6
@@ -139,21 +150,21 @@ Util.createChromeFrameCheckbox = function(serverUaString, opt_reloadOnChange) {
   var reloadOnChange = opt_reloadOnChange || false;
   var ua = goog.userAgent.getUserAgentString();
   if (serverUaString.indexOf('chromeframe') != -1) {
-    var container = document.createElement('strong');
+    var container = goog.dom.createElement('strong');
     container.id = 'bs-cf-c';
-    var cb = document.createElement('input');
+    var cb = goog.dom.createElement('input');
     cb.id = 'bs-cf-enabled';
     cb.type = 'checkbox';
     var chromeFrameEnabled = goog.net.cookies.get(Util.COOKIE_CHROME_FRAME);
     cb.checked = chromeFrameEnabled == '1';
     goog.events.listen(cb, 'click', function(e) {
       var cb = e.currentTarget;
-      goog.net.cookies.set(Util.COOKIE_CHROME_FRAME, cb.checked ? 1 : 0);
+      goog.net.cookies.set(Util.COOKIE_CHROME_FRAME, cb.checked ? '1' : '0');
       if (reloadOnChange) {
         window.top.location.href = window.top.location.href;
       }
     });
-    var label = document.createElement('label');
+    var label = goog.dom.createElement('label');
     label.setAttribute('for', cb.id);
     label.innerHTML = 'Run in Chrome Frame';
 
@@ -163,20 +174,475 @@ Util.createChromeFrameCheckbox = function(serverUaString, opt_reloadOnChange) {
   }
 };
 
+
+/**
+ * @param {string} httpUserAgent A full user agent string - HTTP_USER_AGENT
+ * @param {string} userAgentPretty A parsed Family v1.v2.v3 string
+ */
+Util.reconcileClientServerUaPretty = function(httpUserAgent, userAgentPretty) {
+  var ua = goog.userAgent.getUserAgentString();
+  var reconciledUa = userAgentPretty;
+  // Chrome Frame detection, i.e. server side UA string and client
+  // are in mismatch.
+  // @see http://code.google.com/p/chromium/issues/detail?id=22997
+  if (httpUserAgent.indexOf('chromeframe') != -1 &&
+      ua.indexOf('chromeframe') == -1) {
+    reconciledUa = 'Chrome Frame (' + userAgentPretty + ')';
+  }
+  return reconciledUa;
+};
+
+Util.alphaCaseInsensitiveCompare = function(a, b) {
+  // turns 9/10 into 9
+  if (a.match(/\//) && b.match(/\//)) {
+    a = a.replace(/\/.*/, '');
+    b = b.replace(/\/.*/, '');
+    return goog.ui.TableSorter.numericSort(a, b);
+  } else {
+    a = a.toLowerCase();
+    b = b.toLowerCase();
+    return a > b ? 1 : a < b ? -1 : 0;
+  }
+};
+
+/*****************************************/
+
+
+/**
+ * @param {string} category The current category.
+ * @param {string} browserFamily The current browserFamily.
+ * @param {string} realUaString The actual user agent string.
+ * @param {string} resultsUriParams category_results=foo,bar etc..
+ * @constructor
+ */
+Util.ResultTablesController = function(category, browserFamily,
+    realUaString, resultsUriParams) {
+  this.category = category;
+  this.browserFamily = browserFamily;
+  this.realUaString = realUaString;
+  this.resultsUriParams = resultsUriParams;
+  // For string concat onto url..
+  if (this.resultsUriParams.indexOf('&') == -1) {
+    this.resultsUriParams = '&' + this.resultsUriParams;
+  }
+  this.resetUrl();
+
+  this.el = goog.dom.$('bs-results');
+  this.resultsEl = goog.dom.$dom('div', {'className': 'bs-results-bycat'});
+
+  this.categoryLinks = {};
+  this.categoryNames = {};
+
+  // If we have results in the resultUriParams, scroll to them.
+  if (this.resultsUriParams.indexOf('_results') !== -1) {
+    window.location.hash = '#rt-' + this.category + '-cur-ua';
+  }
+
+  this.tables = {};
+  this.xhrLoading = false;
+  this.decorate();
+};
+
+Util.ResultTablesController.prototype.decorate = function() {
+  var categoriesList = goog.dom.createElement('ul');
+  categoriesList.id = 'bs-results-cats';
+  categoriesList.className = 'bs-compact';
+
+  var originalResults = goog.dom.$('bs-results-bycat');
+  var containerEls = originalResults.getElementsByTagName('li');
+
+  var initialCategoryEl;
+  var aClone = goog.dom.createElement('a');
+  var liClone = goog.dom.createElement('li');
+  for (var i = 0, containerEl; containerEl = containerEls[i]; i++) {
+
+    var category = containerEl.id.replace('-results', '');
+    var h3 = containerEl.getElementsByTagName('h3')[0];
+    var categoryName = goog.dom.getTextContent(h3);
+    this.categoryNames[category] = categoryName;
+    goog.dom.removeNode(h3);
+
+    var link = aClone.cloneNode(true);
+    link.href = '/?category=' + category + this.resultsUriParams;
+    link.category = category;
+    link.appendChild(goog.dom.createTextNode(categoryName));
+    this.categoryLinks[category] = link;
+    goog.events.listen(link, 'click', this.changeCategoryClickHandler, false,
+        this);
+
+    var li = liClone.cloneNode(true);
+    li.appendChild(link);
+    categoriesList.appendChild(li);
+
+    // Get set up for the chosen category table.
+    if (category == this.category) {
+      var resultTableContainer = goog.dom.$$('div', 'rt', containerEl)[0];
+      goog.style.showElement(resultTableContainer, false);
+      this.tables[this.url] = resultTableContainer;
+      this.categoryLinks[category].parentNode.className = 'bs-sel';
+    }
+  }
+  goog.dom.removeNode(originalResults);
+  this.el.appendChild(categoriesList);
+  this.el.appendChild(this.resultsEl);
+
+  // Inits the first ResultTable.
+  this.resultsEl.appendChild(resultTableContainer);
+  var resultTable = new Util.ResultTable(this, resultTableContainer);
+  goog.style.showElement(resultTableContainer, true);
+};
+
+/**
+ * @param {goog.events.Event} e
+ */
+Util.ResultTablesController.prototype.changeCategoryClickHandler = function(e) {
+  var link = e.currentTarget;
+  // this is some anchor with .category
+  if (this.xhrLoading || this.category == link.category) {
+    e.preventDefault();
+    return;
+  }
+  this.setCategory(link.category);
+  e.preventDefault();
+};
+
+/**
+ * @param {string} category
+ */
+Util.ResultTablesController.prototype.setCategory = function(category) {
+  if (this.category) {
+    this.categoryLinks[this.category].parentNode.className = '';
+    goog.style.showElement(this.tables[this.url], false);
+  }
+
+  this.category = category;
+  this.categoryLinks[this.category].parentNode.className = 'bs-sel';
+  this.resetUrl();
+  this.updateTableDisplay();
+};
+
+
+/**
+ * @param {string} browserFamily
+ */
+Util.ResultTablesController.prototype.setBrowserFamily = function(
+    browserFamily) {
+  this.browserFamily = browserFamily;
+  this.resetUrl();
+  this.updateTableDisplay();
+};
+
+Util.ResultTablesController.prototype.resetUrl = function() {
+  this.url = '/?category=' + this.category +
+      '&o=xhr&v=' + this.browserFamily + this.resultsUriParams;
+};
+
+Util.ResultTablesController.prototype.hideTables = function() {
+  goog.object.forEach(this.tables, function(el, url, obj) {
+      if (goog.style.isElementShown(el)) {
+        goog.style.showElement(el, false);
+      }
+  });
+};
+
+Util.ResultTablesController.prototype.updateTableDisplay = function() {
+  this.hideTables();
+  if (!goog.object.containsKey(this.tables, this.url)) {
+    this.xhrCategoryResults();
+  } else {
+    goog.style.showElement(this.tables[this.url], true);
+  }
+};
+
+Util.ResultTablesController.prototype.xhrCategoryResults = function() {
+  this.xhrLoading = true;
+
+  var textContent = 'Loading the ' +
+      this.categoryNames[this.category] +
+      ' Results ...';
+  this.tables[this.url] = goog.dom.$dom('div',
+      {'className': 'rt-loading'}, textContent);
+  this.resultsEl.appendChild(this.tables[this.url]);
+
+  goog.net.XhrIo.send(this.url, goog.bind(this.loadStatsTableCallback, this),
+      'get', null, null, 15000); // 15000 = 15 second timeout
+};
+
+Util.ResultTablesController.prototype.loadStatsTableCallback = function(e) {
+  var xhrio = e.target;
+  if (xhrio.isSuccess()) {
+    var html = xhrio.getResponseText();
+    this.tables[this.url].className = '';
+    this.tables[this.url].innerHTML = html;
+    var resultTable = new Util.ResultTable(this, this.tables[this.url]);
+
+  } else {
+    this.tables[this.url].className = 'rt-err';
+    this.tables[this.url].innerHTML =
+        '<div>Crud. We encountered a problem on our server.</div>' +
+        '<div>We are aware of the issue, and apologize.</div>';
+    var link = goog.dom.createElement('a');
+    link.category = this.category;
+    goog.events.listen(link, 'click', this.xhrCategoryResults, false,
+        this);
+    link.href = this.url;
+    link.innerHTML = 'Feel free to try again.';
+    this.tables[this.url].appendChild(link);
+  }
+  this.xhrLoading = false;
+};
+
+/**
+ * @param {Util.ResultTablesController} controller
+ * @param {string} category
+ * @param {Element} tableEl
+ * @constructor
+ */
+Util.ResultTable = function(controller, el) {
+
+  /**
+   * @type {Util.ResultTablesController}
+   */
+  this.controller = controller;
+
+  /**
+   * @type {Element}
+   */
+   this.table = goog.dom.$$('table', 'rt-t', el)[0];
+
+  /**
+   * @type {Element}
+   */
+  this.browserFamilySelect = goog.dom.$$('select', null, this.table)[0];
+
+  // Copy a bunch of controller properties for reference.
+  this.category = this.controller.category;
+  this.browserFamily = this.controller.browserFamily;
+
+  this.init();
+};
+
+Util.ResultTable.prototype.init = function() {
+  this.setUpBrowserFamilyForm();
+  this.setUpSortableTable();
+  this.fixRealUaStringInResults();
+  this.initTooltips();
+  this.initCompareUas();
+};
+
+Util.ResultTable.prototype.initCompareUas = function() {
+  /**
+   * @type {Array.<HTMLInputElement>}
+   */
+  this.compareCbs = [];
+
+  /**
+   * @type {Array.<string>}
+   */
+  this.uasToCompare = [];
+
+  var rows = this.table.rows;
+  var cbNode = document.createElement('input');
+  cbNode.type = 'checkbox';
+  var labelNode = document.createElement('label');
+
+  var cells = goog.dom.$$('td', 'rt-ua', this.table);
+  for (var i = 0, cell; cell = cells[i]; i++) {
+    var uaNameCellList = goog.dom.$$('span', 'bs-ua-n', cell);
+    if (!uaNameCellList.length == 1) {
+      continue;
+    }
+    var uaNameCell = uaNameCellList[0];
+    var uaName = uaNameCell.innerHTML;
+    var cbClone = cbNode.cloneNode(false);
+    this.compareCbs.push(cbClone);
+    cbClone.id = 'rt-ua-cb-' + i;
+    cbClone.value = goog.dom.getTextContent(uaNameCell);
+    goog.events.listen(cbClone, 'click', this.cbClick, false, this);
+
+    var labelClone = labelNode.cloneNode(false);
+    labelClone.setAttribute('for', cbClone.id);
+    labelClone.appendChild(cbClone);
+    labelClone.appendChild(uaNameCell);
+
+    cell.appendChild(labelClone);
+  }
+
+  // If we didn't add any compare checkboxes just stop now.
+  if (this.compareCbs.length == 0) {
+    return;
+  }
+
+  this.compareUasBtn = document.createElement('button');
+  this.compareUasBtn.disabled = true;
+  this.compareUasBtn.innerHTML = 'Compare UAs';
+  goog.events.listen(this.compareUasBtn, 'click', this.compareUas, false, this);
+
+  var tFoot = this.table.createTFoot();
+  var tFootRow = tFoot.insertRow(0);
+  var tFootCell = tFootRow.insertCell(0);
+  tFootCell.setAttribute('colspan', rows[0].cells.length);
+  tFootCell.appendChild(this.compareUasBtn);
+};
+
+/**
+ * @param {goog.events.Event} e Browser click event.
+ */
+Util.ResultTable.prototype.cbClick = function(e) {
+  var cb = e.currentTarget;
+  if (cb.checked) {
+    goog.array.insert(this.uasToCompare, cb.value);
+  } else {
+    goog.array.remove(this.uasToCompare, cb.value);
+  }
+  if (this.compareUasBtn.disabled && this.uasToCompare.length > 0) {
+    this.compareUasBtn.disabled = false;
+  } else if (this.uasToCompare.length == 0) {
+    this.compareUasBtn.disabled = true;
+  }
+};
+
+/**
+ * @param {goog.events.Event} e Browser click event.
+ */
+Util.ResultTable.prototype.compareUas = function(e) {
+  var compareUasUrl = '/?category=' + this.category + '&' +
+      'v=' + this.browserFamily + '&' +
+      'ua=' + encodeURIComponent(this.uasToCompare.join(','));
+  window.location.href = compareUasUrl;
+};
+
+Util.ResultTable.prototype.initTooltips = function() {
+  if (!this.table) { return; }
+  var thead = this.table.getElementsByTagName('thead')[0];
+  var ths = thead.getElementsByTagName('th');
+  for (var i = 0, th; th = ths[i]; i++) {
+    if (th.title && th.title != '') {
+      var tt = new goog.ui.Tooltip(th);
+      tt.setHtml(th.title);
+      th.setAttribute('title', '');
+    }
+  }
+};
+
+Util.ResultTable.prototype.setUpBrowserFamilyForm = function() {
+
+  // Ensures a refresh doesn't make the form select look wrongly selected.
+  goog.dom.$$('form', null, this.table)[0].reset();
+
+  // Hides the submit since we'll make listeners.
+  goog.style.showElement(goog.dom.$$(null, 'rt-v-s', this.table)[0], false);
+
+  // Adds a "Custom" option if we have a ua param in the url.
+  if (this.controller.url.indexOf('ua=') != -1) {
+    var opts = this.browserFamilySelect.options;
+    var len = this.browserFamilySelect.length;
+    opts[len] = new Option('Custom', 'custom');
+    this.browserFamilySelect.selectedIndex = -1;
+    opts[len].selected = true;
+  }
+
+  goog.events.listen(this.browserFamilySelect, 'click',
+      this.browserFamilyClickHandler, false, this);
+  goog.events.listen(this.browserFamilySelect, 'change',
+      this.browserFamilyChangeHandler, false, this);
+};
+
+Util.ResultTable.prototype.setUpSortableTable = function() {
+  if (!this.table) { return; }
+  // we know # tests should be numeric sort
+  var thead = this.table.getElementsByTagName('thead')[0];
+  var ths = thead.getElementsByTagName('th');
+  var numTestsIndex = ths.length - 1;
+
+  var tableSorter = new goog.ui.TableSorter();
+  tableSorter.setDefaultSortFunction(Util.alphaCaseInsensitiveCompare);
+  tableSorter.setSortFunction(numTestsIndex,
+      goog.ui.TableSorter.numericSort);
+  tableSorter.decorate(this.table);
+  goog.events.listen(tableSorter, goog.ui.TableSorter.EventType.SORT,
+      this.onTableSort, false, this);
+};
+Util.ResultTable.prototype.onTableSort = function(e) {
+  var yourResultsRow = goog.dom.$('tr', 'rt-ua-s-r', this.table);
+  if (yourResultsRow.length) {
+    goog.style.showElement(yourResultsRow[0], false);
+  }
+};
+Util.ResultTable.prototype.fixRealUaStringInResults = function() {
+  var resultUa = goog.dom.$$('span', 'rt-cur-ua', this.table);
+  if (this.controller.realUaString && resultUa.length) {
+    resultUa[0].innerHTML = this.controller.realUaString;
+  }
+};
+Util.ResultTable.prototype.getBrowserFamilyValue = function() {
+  var browserFamilyValue;
+  if (this.browserFamilySelect) {
+    browserFamilyValue = this.browserFamilySelect.options[
+        this.browserFamilySelect.options.selectedIndex].value;
+  }
+  return browserFamilyValue;
+};
+Util.ResultTable.prototype.browserFamilyChangeHandler = function(e) {
+
+  // TODO(elsigh): Persist custom ua= options in the SELECT.
+  if (this.controller.url.indexOf('ua=') != -1) {
+
+  }
+
+  this.browserFamily = this.getBrowserFamilyValue();
+  this.controller.setBrowserFamily(this.browserFamily);
+
+  // fix the download links
+  var downloadsContainer = goog.dom.$$('span', 'bs-results-dl');
+  if (downloadsContainer.length) {
+    downloadsContainer = downloadsContainer[0];
+    var downloadLinks = downloadsContainer.getElementsByTagName('a');
+    for (var i = 0, downloadLink; downloadLink = downloadLinks[i]; i++) {
+      var href = downloadLink.href;
+      href = href.replace(/v=[^&]+/, 'v=' + this.browserFamily);
+      // Strip off the ua parts if they switch from a custom to a known v.
+      if (this.browserFamily != 'custom') {
+        href = href.replace(/&ua=[^&]+/, '');
+      }
+      downloadLink.href = href;
+    }
+  }
+  e.stopPropagation();
+};
+Util.ResultTable.prototype.browserFamilyClickHandler = function(e) {
+  // Prevents table cells from sorting just on click.
+  e.stopPropagation();
+};
+
+
 /*****************************************/
 
 /**
  * This is the test_driver.html runner code.
+ * @param {string} testPage
+ * @param {Object} windowParent
+ * @param {string} category
+ * @param {string} categoryName
+ * @param {string} csrfToken
+ * @param {boolean} autorun
+ * @param {boolean} continueToNextTest
+ * @param {string} testUrl
  * @constructor
- * @export
  */
-Util.testDriver = function(testPage, category, categoryName, csrfToken,
-    autorun, continueToNextTest) {
+Util.TestDriver = function(testPage, windowParent, category, categoryName,
+    csrfToken, autorun, continueToNextTest, testUrl) {
 
   /**
    * @type {string}
    */
   this.testPage = testPage;
+
+  /**
+   * @type {Object}
+   * @private
+   */
+  this.windowParent_ = windowParent;
 
   /**
    * @type {string}
@@ -205,6 +671,11 @@ Util.testDriver = function(testPage, category, categoryName, csrfToken,
       continueToNextTest != 'None');
 
   /**
+   * @type {string}
+   */
+  this.testUrl = testUrl;
+
+  /**
    * @type {Function}
    */
   this.runTestButtonClickHandlerBound =
@@ -213,7 +684,7 @@ Util.testDriver = function(testPage, category, categoryName, csrfToken,
   /**
    * @type {Element}
    */
-  this.runTestButton = document.getElementById('bs-runtest');
+  this.runTestButton = goog.dom.$('bs-runtest');
   if (this.runTestButton) {
     goog.events.listen(this.runTestButton, 'click',
         this.runTestButtonClickHandlerBound);
@@ -222,7 +693,7 @@ Util.testDriver = function(testPage, category, categoryName, csrfToken,
   /**
    * @type {Element}
    */
-  this.testFrame = parent.frames['bs-test-frame'];
+  this.testFrame = this.windowParent_.frames['bs-test-frame'];
 
   /**
    * @type {Array}
@@ -230,31 +701,46 @@ Util.testDriver = function(testPage, category, categoryName, csrfToken,
   this.testCategories = [];
 
   /**
-   * @type {string}
+   * @type {Array}
    */
   this.testResults = null;
 
   /**
-   * @type {string}
+   * @type {Element}
    */
-  this.uriResults = null;
-
-  /**
-   * @type {INPUTElement}
-   */
-  this.sendBeaconCheckbox = document.getElementById('bs-send-beacon');
+  this.sendBeaconCheckbox = goog.dom.$('bs-send-beacon');
 };
 
+/**
+ * @type {?string}
+ */
+Util.TestDriver.prototype.uriResults = null;
+
+/**
+ * @param {string} category
+ */
+Util.TestDriver.prototype.addCategory = function(category) {
+  this.testCategories.push(category);
+};
 
 /**
  * This is the function that all test pages will call to beacon.
  * @param {Array} testResults test1=result,test2=result, etc..
- * @param {Array} opt_urlParams Possibly a subset of testResults for
+ * @param {Array} opt_continueParams Possibly a subset of testResults for
  *     sending to the results page.
- * @export
  */
-Util.testDriver.prototype.sendScore = function(testResults,
+Util.TestDriver.prototype.sendScore = function(testResults,
     opt_continueParams) {
+
+  // Support for abart's syntax
+  if (typeof(testResults[0]) == 'object') {
+    var reFormattedResults = [];
+    for (var i = 0, test; test = testResults[i]; i++) {
+      reFormattedResults.push(test['test'] + '=' +
+          (test['result'] === true ? '1' : 0));
+    }
+    testResults = reFormattedResults
+  }
   var continueParams = opt_continueParams || null;
   this.testResults = testResults;
   this.uriResults = this.category + '_results=' +
@@ -262,9 +748,10 @@ Util.testDriver.prototype.sendScore = function(testResults,
           escape(continueParams.join(',')) :
           escape(testResults.join(',')));
 
+  var uaString = goog.userAgent.getUserAgentString() || '';
   var data = 'category=' + this.category + '&results=' +
       testResults.join(',') + '&csrf_token=' + this.csrfToken +
-      '&js_ua=' + escape(goog.userAgent.getUserAgentString());
+      '&js_ua=' + escape(uaString);
 
   // Autorun always shares your score.
   if (this.autorun) {
@@ -276,7 +763,9 @@ Util.testDriver.prototype.sendScore = function(testResults,
       goog.net.XhrIo.send('/beacon', null, 'post', data);
     }
     this.runTestButton.className = 'bs-btn';
-    this.runTestButton.innerHTML = 'Done! Compare your results »';
+    var checkmarkUtf8 = '✓';
+    this.runTestButton.innerHTML = checkmarkUtf8 + 'Done! Compare your ' +
+        this.categoryName + ' Test results »';
     this.runTestButton.continueUrl = '/?' + this.uriResults;
     goog.events.listen(this.runTestButton, 'click', function(e) {
       var btn = e.target;
@@ -284,16 +773,17 @@ Util.testDriver.prototype.sendScore = function(testResults,
       window.top.location.href = continueUrl;
     });
 
+    /*
     var resultsDisplay = continueParams ?
           continueParams.join(',') :
-          testResults.join(',');
-    var scoreNode = document.createElement('div');
+          testResults.join(',<wbr>');
+    var scoreNode = goog.dom.createElement('div');
     var thanks = this.sendBeaconCheckbox.checked ?
         'Thanks for contributing! ' : '';
-    scoreNode.appendChild(document.createTextNode(
-        thanks + 'Your results: ' + resultsDisplay));
+    scoreNode.innerHTML = thanks + 'Your results: ' + resultsDisplay;
     scoreNode.style.margin = '.7em 0 0 1em';
     this.runTestButton.parentNode.appendChild(scoreNode);
+    */
   }
 
   // Update the test frame to scroll to the top where the score is.
@@ -304,7 +794,7 @@ Util.testDriver.prototype.sendScore = function(testResults,
 /**
  * @param {goog.events.Event} e
  */
-Util.testDriver.prototype.onBeaconCompleteAutorun = function(e) {
+Util.TestDriver.prototype.onBeaconCompleteAutorun = function(e) {
   var len = this.testCategories.length;
   var nextUrl;
   if (this.continueToNextTest) {
@@ -341,14 +831,14 @@ Util.testDriver.prototype.onBeaconCompleteAutorun = function(e) {
 /**
  * @param {goog.events.Event} e
  */
-Util.testDriver.prototype.runTestButtonClickHandler = function(e) {
+Util.TestDriver.prototype.runTestButtonClickHandler = function(e) {
   this.runTestButton.className = 'bs-btn-disabled';
   goog.events.unlisten(this.runTestButton, 'click',
       this.runTestButtonClickHandlerBound);
   this.runTestButton.innerHTML = this.categoryName + ' Tests Running...';
-  document.getElementById('bs-send-beacon-label').style.display = 'none';
+  goog.dom.$('bs-send-beacon-label').style.display = 'none';
   // Is there a Chrome Frame checkbox?
-  var chromFrameCheckbox = document.getElementById('bs-cf-c');
+  var chromFrameCheckbox = goog.dom.$('bs-cf-c');
   if (chromFrameCheckbox) {
     chromFrameCheckbox.style.display = 'none';
   }
@@ -360,8 +850,33 @@ Util.testDriver.prototype.runTestButtonClickHandler = function(e) {
  * Loads the test page into the frame.
  * @export
  */
-Util.testDriver.prototype.runTest = function() {
-  var rand = Math.floor(Math.random() * 10000000);
-  var categoryTestUrl = this.testPage + '?r=' + rand;
-  this.testFrame.location.href = categoryTestUrl;
+Util.TestDriver.prototype.runTest = function() {
+  // i.e. run just one test.
+  if (this.testUrl != '') {
+    this.sendBeaconCheckbox.style.display = 'none';
+    this.runTestButton.style.display = 'none';
+    goog.dom.$('bs-send-beacon-label').style.display = 'none';
+    this.testFrame.location.href = this.testUrl;
+  } else {
+    var rand = Math.floor(Math.random() * 10000000);
+    var categoryTestUrl = this.testPage + '?category=' + this.category + '&r=' + rand;
+    this.testFrame.location.href = categoryTestUrl;
+  }
 };
+
+/**
+ * EXPORTS
+ */
+goog.exportSymbol('Util.createChromeFrameCheckbox',
+    Util.createChromeFrameCheckbox);
+goog.exportSymbol('Util.reconcileClientServerUaPretty',
+    Util.reconcileClientServerUaPretty);
+goog.exportSymbol('Util.getParam', Util.getParam);
+goog.exportSymbol('Util.ResultTablesController', Util.ResultTablesController);
+goog.exportSymbol('Util.TestDriver', Util.TestDriver);
+goog.exportSymbol('Util.TestDriver.prototype.addCategory',
+    Util.TestDriver.prototype.addCategory);
+goog.exportSymbol('Util.TestDriver.prototype.runTest',
+    Util.TestDriver.prototype.runTest);
+goog.exportSymbol('Util.TestDriver.prototype.sendScore',
+    Util.TestDriver.prototype.sendScore);

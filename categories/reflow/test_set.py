@@ -128,26 +128,26 @@ class ReflowTestSet(test_set_base.TestSet):
 
     Args:
       results: {
-          test_key_1: {'score': score_1},
-          test_key_2: {'score': score_2},
+          test_key_1: {'raw_score': raw_score_1},
+          test_key_2: {'raw_score': raw_score_2},
           ...
           }
     Returns:
-        { test_key_1: {'score': adjusted_score_1, 'expando': score_1},
-          test_key_2: {'score': adjusted_score_2, 'expando': score_2},
+        { test_key_1: {'raw_score': adjusted_raw_score_1, 'expando': score_1},
+          test_key_2: {'raw_score': adjusted_raw_score_2, 'expando': score_2},
           ...
           }
     """
     if BASELINE_TEST_NAME not in results:
       raise NameError('No baseline score found in the test results')
-    baseline_score = float(results[BASELINE_TEST_NAME]['score'])
+    baseline_score = float(results[BASELINE_TEST_NAME]['raw_score'])
 
     # Turn all values into some computed percentage of the baseline score.
     # This resets the score in the dict, but adds an expando to preserve the
     # original score's milliseconds value.
     for result in results.values():
-      result['expando'] = result['score']
-      result['score'] = int(100.0 * result['score'] / baseline_score)
+      result['expando'] = result['raw_score']
+      result['score'] = int(100.0 * result['raw_score'] / baseline_score)
     return results
 
   def GetTestScoreAndDisplayValue(self, test_key, raw_scores):

@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <script src="{{ "config.js"|resource_path:"security" }}"></script>
+    <style>
+    #results { background: #FFF; width: 600px; padding: 10px 40px; color: #000; font-size: 11px; line-height: 1.3em; }
+    body.unfinished { background-color: orange; }
+    body.done { background-color: green; }
+    .running .status { color: orange; }
+    .pass .status { color: green; }
+    .fail .status { color: red; }
+    iframe { height: 50px; width: 80px; background-color: white; }
+    </style>
+    <script>
+    var tests = [];
+    var results = [];
+    var committed = false;
+    function commit() {
+      window.committed = true;
+      if (results.length >= tests.length) sendScore();
+    }
+    function sendScore() {
+      if (document.body.className == 'unfinished') {
+        document.body.className = 'done';
+        if (parent != self) parent.sendScore(window.results);
+      }
+    }
+    function recordResult(key, result) {
+      window.results.push({"test": key, "result": result});
+      var li = document.getElementById(key);
+      li.className = (result ? "pass" : "fail");
+      var span = document.createElement("span");
+      li.innerHTML = '';
+      span.className = 'status';
+      span.appendChild(document.createTextNode( result ? "PASS" : "FAIL"));
+      li.appendChild(span);
+      li.appendChild(document.createTextNode(" " + key));
+      if (window.committed && results.length >= tests.length) sendScore();
+    }
+    function newTest(key) {
+      tests.push(key);
+      var li = document.createElement("li");
+      li.id = key;
+      li.className = "running";
+      var span = document.createElement("span");
+      span.className = 'status';
+      span.appendChild(document.createTextNode("(running)"));
+      li.appendChild(span);
+      li.appendChild(document.createTextNode(" " + key));
+      document.getElementById('results').appendChild(li);
+      function runTestAsync(test) {
+        try {
+          recordResult(key, !!test());
+        } catch(ex) {
+          recordResult(key, false);
+        }
+      }
+      return runTestAsync;
+    }
+    function runTest(key, test) {
+      newTest(key)(test);
+    }
+    function runIframeTest(key, src, onload) {
+      var runTestCallback = newTest(key);
+      var iframe = document.createElement('iframe');
+      if (onload) {
+        observe(iframe, 'load', function () {
+          runTestCallback(function() {
+            return onload.call(null, iframe);
+          });
+        });
+      }
+      var cacheBustingVersion = '?v={{ resource_version }}';
+      iframe.src = src + cacheBustingVersion;
+      document.getElementById('iframes').appendChild(iframe);
+      return runTestCallback;
+    }
+    function observe(element, actualEventName, responder) {
+      if (element.addEventListener) {
+        element.addEventListener(actualEventName, responder, false);
+      } else {
+        element.attachEvent("on" + actualEventName, responder);
+      }
+    }
+    </script>
+  </head>
+  <body class='unfinished'>
+    <ol id='results'></ol>
+    <div id="iframes"></div>
+    <script>
+    window.test_instance = Math.random();
+    runTest('postMessage API', function () {
+      return window.postMessage;
+    });
+    runTest('JSON.parse API', function () {
+      return window.JSON && window.JSON.parse;
+    });
+    runTest('toStaticHTML API', function () {
+      return window.toStaticHTML;
+    });
+    runTest('httpOnly cookie API', function () {
+      return document.cookie.indexOf('regularTestCookie') != -1 &&
+             document.cookie.indexOf('httpOnlyTestCookie') == -1;
+    });
+    var attack = "<script>script_ran = true<\/script>";
+    runIframeTest('Block reflected XSS',
+                  NON_APP_ENGINE_BASE_URL + "xss-frame-victim.html?" + attack,
+                  function (frame) { return top.xss_filter_test_result == 'true'; });
+    try { eval("var location = '#';"); } catch (ex) { }
+    runTest('Block location spoofing', function () {
+      return window.location != "#";
+    });
+    runTest('Block JSON hijacking', function () {
+      var fail = false;
+      var failFunc = function () { fail = true; }
+      var normal_array = window.Array;
+      window.Array = failFunc;
+      var array_literal = ["secret!"];
+      window.Array = normal_array;
+
+      var normal_object = window.Object;
+      window.Object = function() { this.some_random_field = ''; }
+      if (window.Object.__defineSetter__) {
+        window.Object.__defineSetter__("some_random_field", failFunc);
+      }
+      var object_literal = {"some_random_field": "secret"};
+
+      try {
+        eval("var o = { set some_random_field(val) { failFunc(); } };");
+        window.Object.prototype = o;
+      } catch (ex) { }
+      var object_literal = {"some_random_field": "secret"};
+
+      try {
+        eval("var o = { some_random_field setter: function(val) { failFunc(); } }");
+        window.Object.prototype = o;
+      } catch (ex) { }
+      var object_literal = {"some_random_field": "secret"};
+
+      if (window.Object.defineSetter) {
+        window.Object.defineSetter("some_random_field", failFunc);
+      }
+      var object_literal = {"some_random_field": "secret"};
+
+      if (window.Object.defineProperty) {
+        window.Object.defineProperty(Object.prototype, "some_random_field", { set: failFunc });
+      }
+      var object_literal = {"some_random_field": "secret"};
+
+      window.Object = normal_object;
+      return !fail;
+    });
+    window.script_in_css_pass = true;
+    document.write("<div id='testDiv' style='width:expression(window.script_in_css_pass=false);-moz-binding:url(" + CROSS_ORIGIN_BASE_URL + "xssmoz.xml#xss)'></div>");
+    document.write("<div id='xblTest'></div><link rel='stylesheet' href='" + CROSS_ORIGIN_BASE_URL + "xssmoz.css'>");
+    var cssExpressionCallback = newTest('Block XSS in CSS');
+    observe(window, 'load', function () {
+      cssExpressionCallback(function () { return window.script_in_css_pass; });
+    });
+    runIframeTest('Block cross-origin document', CROSS_ORIGIN_BASE_URL + "cross-origin-frame.html", function (frame) {
+      try {
+        return !frame.contentWindow.document;
+      } catch (ex) {
+        return true;
+      }
+    });
+    runIframeTest('Block cross-origin contentDocument', CROSS_ORIGIN_BASE_URL + "cross-origin-frame.html", function (frame) {
+      try {
+        return !frame.contentDocument;
+      } catch (ex) {
+        return true;
+      }
+    });
+    commit();
+    </script>
+  </body>
+</html>

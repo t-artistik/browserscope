@@ -30,7 +30,7 @@ skip_files: |
   (\..*)|
   (BUILD)|
   (Makefile)|
-  (.*/closure/.*)|
+  (.*/closure-.*)|
   (.*/tools/.*)|
   (.*/django/contrib/admin.*)|
   (.*/django/contrib/auth.*)|
@@ -81,6 +81,15 @@ handlers:
   expiration: '3650d'
 - url: /reflow/static
   static_dir: categories/reflow/static
+  expiration: '3650d'
+- url: /security/static
+  static_dir: categories/security/static
+  expiration: '3650d'
+- url: /html5/static
+  static_dir: categories/html5/static
+  expiration: '3650d'
+- url: /jskb/static
+  static_dir: categories/jskb/static
   expiration: '3650d'
 
 - url: /favicon\.ico

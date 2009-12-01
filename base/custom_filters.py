@@ -31,11 +31,7 @@ import settings
 def by_key(array, key):
   try:
     value = array[key]
-  except IndexError:
-    value = ''
-  except TypeError:
-    value = ''
-  except KeyError:
+  except (IndexError, TypeError, KeyError):
     value = ''
   return value
 
@@ -77,13 +73,19 @@ def resource_path(resource, category=None):
   # Add on a version bit so we can use far future expires.
   # In dev mode add random bits to prevent annoying, cough, browsers from
   # caching stuff in frames.
+  version = get_resource_version()
+
+  path += '?v=%s' % version
+
+  return path
+
+
+def get_resource_version():
   if settings.BUILD == 'development':
     version = str(datetime.datetime.now())
   else:
     version = os.environ['CURRENT_VERSION_ID']
-  path += '?v=%s' % version
-
-  return path
+  return version
 
 
 @register.filter

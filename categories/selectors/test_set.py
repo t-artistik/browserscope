@@ -72,7 +72,7 @@ class SelectorsTestSet(test_set_base.TestSet):
     """
     raw_score = raw_scores.get(test_key, 0)
     score = 0
-    if test.key == 'passed':
+    if test_key == 'passed':
       if raw_score >= 2100:
         score = 10
       elif raw_score >= 2000:
@@ -83,7 +83,7 @@ class SelectorsTestSet(test_set_base.TestSet):
         score = 7
       else:
         score = 5
-    elif test.key == 'failed':
+    elif test_key == 'failed':
       if raw_score == 0:
         score = 10
       elif raw_score <= 5:
@@ -108,13 +108,16 @@ class SelectorsTestSet(test_set_base.TestSet):
           # score is from 1 to 10.
           # display_value is the text for the cell.
     """
-    #logging.info('%s GetRowScore, results:%s' % (self.category, results))
+    logging.info('GetRowScoreAndDisplayVAlue: category=%s, results=%s',
+                 self.category, results)
     passed = results.get('passed', {}).get('raw_score', None)
     failed = results.get('failed', {}).get('raw_score', None)
     if passed is not None and failed is not None:
       percent_passed = 100.0 * passed / (passed + failed)
       if percent_passed:
-        return self.Convert100Base10(percent_passed), '%.1f%%' % percent_passed
+        row_score = self.Convert100to10Base(percent_passed)
+        display_value = '%.1f%%' % percent_passed
+        return row_score, display_value
       else:
         return 1, '0%'
     else:

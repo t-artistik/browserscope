@@ -27,6 +27,9 @@ def GetTestSets():
   for category in settings.CATEGORIES:
     yield GetTestSet(category)
 
+def GetTestSetsIncludingBetas():
+  for category in settings.CATEGORIES + settings.CATEGORIES_BETA:
+    yield GetTestSet(category)
 
 CATEGORY_TEST_SETS = {}
 def GetTestSet(category):

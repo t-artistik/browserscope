@@ -21,6 +21,7 @@ urlpatterns = patterns('',
   (r'^alltests', 'base.util.AllTests'),
   (r'^beacon.*', 'base.util.Beacon'),
   (r'^get_csrf',  'base.util.GetCsrf'),
+  (r'^resource',  'third_party.resource-cgi.resource.Handler'),
 
   # Admin functionality
   (r'^update_datastore', 'base.util.UpdateDatastore'),
@@ -58,6 +59,9 @@ urlpatterns = patterns('',
   (r'^_ah/queue/user-agent-group$', 'base.cron.UserAgentGroup'),
   (r'^_ah/queue/recent-tests$', 'base.cron.UpdateRecentTests'),
 
+  # GViz Data source
+  #(r'^gviz$', 'base.util.Gviz'),
+
   # GAEBar
   (r'^gaebar/', include('third_party.gaebar.urls')),
 
@@ -68,6 +72,8 @@ urlpatterns = patterns('',
   # Category Test Handlers, i.e. /network/test
   (r'^[^\/]+/test$', 'base.util.CategoryTest'),
   (r'^category_test_driver$', 'base.util.CategoryTestDriver'),
+  (r'^multi_test_frameset$', 'base.util.MultiTestFrameset'),
+  (r'^multi_test_driver$', 'base.util.MultiTestDriver'),
 
   #############################################################################
   ## CATEGORY URLS BELOW
@@ -85,9 +91,7 @@ urlpatterns = patterns('',
   (r'^reflow/locations', 'categories.reflow.handlers.Locations'),
 
   # Network Performance main URLs
-  (r'^network/frameset$', 'categories.network.handlers.Frameset'),
   (r'^network/about$', 'categories.network.handlers.About'),
-  (r'^network/testdriver', 'categories.network.handlers.TestDriver'),
   (r'^network/stats_table$', 'categories.network.handlers.StatsTable'),
 
   # Network Performance test URLs
@@ -105,7 +109,10 @@ urlpatterns = patterns('',
   (r'^network/tests/link-prefetch2', 'categories.network.handlers.LinkPrefetch2'),
   (r'^network/tests/link-prefetch', 'categories.network.handlers.LinkPrefetch'),
   (r'^network/tests/max-connections', 'categories.network.handlers.MaxConnections'),
-  (r'^network/tests/scripts-block', 'categories.network.handlers.ScriptsBlock'),
+  (r'^network/tests/scripts-block-scripts', 'categories.network.handlers.ScriptsBlockScripts'),
+  (r'^network/tests/scripts-block-stylesheets', 'categories.network.handlers.ScriptsBlockStylesheets'),
+  (r'^network/tests/scripts-block-images', 'categories.network.handlers.ScriptsBlockImages'),
+  (r'^network/tests/scripts-block-iframes', 'categories.network.handlers.ScriptsBlockIframes'),
   (r'^network/tests/stylesheets-block', 'categories.network.handlers.StylesheetsBlock'),
   # Network Performance admin URLs
   (r'^network/admin', 'categories.network.handlers.Admin'),
@@ -128,5 +135,28 @@ urlpatterns = patterns('',
 
   # Rich text urls
   (r'^richtext/about$', 'categories.richtext.handlers.About'),
+
+  # Security urls
+  (r'^security/about$', 'categories.security.handlers.About'),
+  (r'^security/test_tpl$', 'categories.security.handlers.Test'),
+
+  # HTML5 urls
+  (r'^html5/about$', 'categories.html5.handlers.About'),
+
+  # Cookies URLs
+ (r'^cookies/about$', 'categories.cookies.handlers.About'),
+ (r'^cookies/tests/clear-cookies$', 'categories.cookies.handlers.ClearCookies'),
+ (r'^cookies/tests/expires$', 'categories.cookies.handlers.Expires'),
+ (r'^cookies/tests/expires2$', 'categories.cookies.handlers.Expires2'),
+ (r'^cookies/tests/max-per-host$', 'categories.cookies.handlers.MaxPerHost'),
+ (r'^cookies/tests/max-name-size$', 'categories.cookies.handlers.MaxNameSize'),
+ (r'^cookies/tests/max-value-size$', 'categories.cookies.handlers.MaxValueSize'),
+ (r'^cookies/tests/max-total-size$', 'categories.cookies.handlers.MaxTotalSize'),
+
+ # JSKB URLs
+ (r'^jskb/about$', 'categories.jskb.handlers.About'),
+ (r'^jskb/json$', 'categories.jskb.handlers.Json'),
+ (r'^jskb/environment-checks$', 'categories.jskb.handlers.EnvironmentChecks'),
+
 
 )

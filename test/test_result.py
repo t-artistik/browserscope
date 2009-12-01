@@ -21,9 +21,12 @@ __author__ = 'elsigh@google.com (Lindsey Simon)'
 import unittest
 import logging
 
+from google.appengine.ext import db
 from categories import test_set_params
+from base import manage_dirty
 from models import result_stats
 from models.result import ResultParent
+from models.result import ResultTime
 
 import mock_data
 
@@ -124,6 +127,30 @@ class ResultTest(unittest.TestCase):
         ValueError,
         ResultParent.AddResult, test_set, '12.1.1.1', ua_string,
         'testDisplay=500,testVisibility=200', params_str='')
+
+
+class IncrementAllCountsTest(unittest.TestCase):
+  def setUp(self):
+    db.delete(ResultTime.all(keys_only=True).fetch(1000))
+    db.delete(ResultParent.all(keys_only=True).fetch(1000))
+
+  def tearDown(self):
+    db.delete(ResultTime.all(keys_only=True).fetch(1000))
+    db.delete(ResultParent.all(keys_only=True).fetch(1000))
+
+  def testIncrementAllCountsBogusTest(self):
+    test_set = mock_data.MockTestSet('foo')
+    parent = ResultParent.AddResult(
+        test_set, '12.2.2.25', mock_data.GetUserAgentString(),
+        'apple=0,banana=44,coconut=444')
+    db.put(ResultTime(parent=parent,
+                      test='bogus test key',
+                      score=1,
+                      dirty=True))
+    self.assertEqual(3 + 1, ResultTime.all(keys_only=True).count())
+    dirty_query = manage_dirty.DirtyResultTimesQuery()
+    parent.UpdateStatsFromDirty(dirty_query)
+    self.assert_(dirty_query.IsResultParentDone())
 
 
 class ChromeFrameAddResultTest(unittest.TestCase):

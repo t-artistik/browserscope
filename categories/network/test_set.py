@@ -47,7 +47,7 @@ class NetworkTest(test_set_base.TestBase):
         self,
         key=key,
         name=name,
-        url='%s/test?testurl=%s' % (_CATEGORY, url_name),
+        url='/%s/tests/%s' % (_CATEGORY, url_name),
         doc=doc,
         min_value=min_value,
         max_value=max_value,
@@ -98,7 +98,25 @@ The upper limit is 60, so if a browser actually supports more than that it'll st
     min_value=0, max_value=60,
     cell_align='right'),
   BooleanNetworkTest(
-    'parscript', '|| Scripts', 'scripts-block',
+    'parscriptscript', '|| Script Script', 'scripts-block-scripts',
+    '''When most browsers start downloading an external script, they wait until the script is done downloading, parsed, and executed
+before starting any other downloads. Although <i>parsing and executing</i> scripts in order is important for maintaining code dependencies,
+it's possible to safely <i>download</i> scripts in parallel with other resources in the page (including other scripts).
+This test determines if scripts can be downloaded in parallel with other resources in the page.'''),
+  BooleanNetworkTest(
+    'parscriptstylesheet', '|| Script Stylesheet', 'scripts-block-stylesheets',
+    '''When most browsers start downloading an external script, they wait until the script is done downloading, parsed, and executed
+before starting any other downloads. Although <i>parsing and executing</i> scripts in order is important for maintaining code dependencies,
+it's possible to safely <i>download</i> scripts in parallel with other resources in the page (including other scripts).
+This test determines if scripts can be downloaded in parallel with other resources in the page.'''),
+  BooleanNetworkTest(
+    'parscriptimage', '|| Script Image', 'scripts-block-images',
+    '''When most browsers start downloading an external script, they wait until the script is done downloading, parsed, and executed
+before starting any other downloads. Although <i>parsing and executing</i> scripts in order is important for maintaining code dependencies,
+it's possible to safely <i>download</i> scripts in parallel with other resources in the page (including other scripts).
+This test determines if scripts can be downloaded in parallel with other resources in the page.'''),
+  BooleanNetworkTest(
+    'parscriptiframe', '|| Script Iframe', 'scripts-block-iframes',
     '''When most browsers start downloading an external script, they wait until the script is done downloading, parsed, and executed
 before starting any other downloads. Although <i>parsing and executing</i> scripts in order is important for maintaining code dependencies,
 it's possible to safely <i>download</i> scripts in parallel with other resources in the page (including other scripts).
@@ -156,7 +174,7 @@ This test checks if an image inserted using a "data:" URL is rendered correctly.
 
 class NetworkTestSet(test_set_base.TestSet):
 
-  def GetTestScoreAndDisplayValue(self, test, raw_scores):
+  def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
     """Get a normalized score (1 to 10) and a value to output to the display.
 
     Args:
@@ -214,14 +232,14 @@ class NetworkTestSet(test_set_base.TestSet):
     visible_tests = [test for test in self.tests if test.IsVisible()]
     for test in visible_tests:
       total_tests += 1
-      if test.key in results:
-        score = results[test.key]['score']
-        total_valid_tests += 1
-        # boolean 1 = 10, and steve's custom score for hostconn & maxconn map
+      if test.key in results and results[test.key]['score'] is not None:
+        # For booleans, when "score" is 10 that's test_type true.
+        # steve's custom score for hostconn & maxconn map
         # simply to 10 for good, 5 for ok, and 0 for fail, but we only award
         # a point for a 10 on those.
-        if score == 10:
+        if results[test.key]['score'] == 10:
           total_score += 1
+        total_valid_tests += 1
     score = int(round(10.0 * total_score / total_tests))
     display = '%s/%s' % (total_score, total_valid_tests)
     return score, display
@@ -231,5 +249,6 @@ TEST_SET = NetworkTestSet(
     category=_CATEGORY,
     category_name='Network',
     tests=_TESTS,
-    test_page='/%s/frameset' % _CATEGORY
+#    test_page=util.MULTI_TEST_DRIVER_TEST_PAGE
+    test_page='/multi_test_frameset'
 )

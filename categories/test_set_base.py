@@ -49,7 +49,8 @@ class ParseResultsValueError(Error):
 
 class TestBase(object):
   def __init__(self, key, name, url, doc, min_value, max_value,
-               test_set=None, is_hidden_stat=False, cell_align='right'):
+               test_set=None, is_hidden_stat=False, cell_align='right',
+               url_prepend='', halt_tests_on_fail=False):
     self.key = key
     self.name = name
     self.url = url
@@ -63,6 +64,12 @@ class TestBase(object):
       self.score_type = 'boolean'
     else:
       self.score_type = 'custom'
+    self.url_prepend = url_prepend
+    # must use 0 and 1 so that the javascript side can use it
+    if halt_tests_on_fail:
+      self.halt_tests_on_fail = 1
+    else:
+      self.halt_tests_on_fail = 0
 
   def GetRanker(self, browser, params_str=None):
     if params_str is None and self.test_set.default_params:
@@ -74,7 +81,6 @@ class TestBase(object):
 
   def IsVisible(self):
     return not hasattr(self, 'is_hidden_stat') or not self.is_hidden_stat
-
 
 class TestSet(object):
   def __init__(self, category, category_name, tests, default_params=None,
@@ -134,10 +140,10 @@ class TestSet(object):
     """Parses a results string.
 
     Args:
-      results_str: a string like 'test_1=score_1,test_2=score_2, ...'.
+      results_str: a string like 'test_1=raw_score_1,test_2=raw_score_2, ...'.
       ignore_key_errors: if true, skip checking keys with list of tests
     Returns:
-      {test_1: {'score': score_1}, test_2: {'score': score_2}, ...}
+      {test_1: {'raw_score': score_1}, test_2: {'raw_score': score_2}, ...}
     """
     parsed_results = self.ParseResults(
         results_str, ignore_key_errors=ignore_key_errors)
@@ -147,17 +153,17 @@ class TestSet(object):
     """Parses a results string.
 
     Args:
-      results_str: a string like 'test_1=score_1,test_2=score_2, ...'.
+      results_str: a string like 'test_1=raw_score_1,test_2=raw_score_2, ...'.
       ignore_key_errors: if true, skip checking keys with list of tests
     Returns:
-      {test_1: {'score': score_1}, test_2: {'score': score_2}, ...}
+      {test_1: {'raw_score': score_1}, test_2: {'raw_score': score_2}, ...}
     """
     test_scores = [x.split('=') for x in str(results_str).split(',')]
     test_keys = sorted([x[0] for x in test_scores])
     if not ignore_key_errors and self._test_keys != test_keys:
       raise ParseResultsKeyError(expected=self._test_keys, actual=test_keys)
     try:
-      parsed_results = dict([(key, {'score': int(score)})
+      parsed_results = dict([(key, {'raw_score': int(score)})
                              for key, score in test_scores])
     except ValueError:
       raise ParseResultsValueError
@@ -169,10 +175,10 @@ class TestSet(object):
     Left to implementations to overload.
 
     Args:
-      results: a list of dicts like {key_1: {'score': score_1}, ...}
+      results: a list of dicts like {key_1: {'raw_score': score_1}, ...}
     Returns:
       a list of modified dicts like the following:
-      {key_1: {'score': modified_score_1, extra_key: extra_value}, ...}
+      {key_1: {'raw_score': modified_score_1, extra_key: extra_value}, ...}
 
     """
     return results
@@ -203,6 +209,8 @@ class TestSet(object):
     for test, ranker in zip(self.tests, self.GetRankers(browser)):
       if ranker:
         medians[test.key], num_scores[test.key] = ranker.GetMedianAndNumScores()
+    logging.info('GetMediansAndNumScores: category=%s, medians=%s, num_scores=%s',
+                 self.category, medians, num_scores)
     return medians, num_scores
 
   def GetStats(self, raw_scores, num_scores=None):
@@ -227,13 +235,15 @@ class TestSet(object):
                   'raw_score': raw_score_1,
                   'score': score_1,
                   'display': display_1,
-                  'expando': expando_1,  # optional
+                  'expando': expando_1,  # (optional)
               },
               test_key_2: {...},
               },
           }
       }
     """
+    logging.info('GetStats: category=%s, raw_scores=%s, num_scores=%s',
+                 self.category, raw_scores, num_scores)
     results = {}
     total_runs = 0
     for test_key, raw_score in raw_scores.items():

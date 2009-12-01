@@ -59,15 +59,21 @@ INSTALLED_APPS = (
 
 
 # BROWSERSCOPE SPECIFIC GLOBALS
-CATEGORIES = ['network', 'acid3', 'selectors', 'richtext']
+CATEGORIES = ['security', 'richtext', 'selectors', 'network', 'acid3',]
+# If a category is in this list it will not be visible in the nav, but
+# data for the category will save in prod to the main rankers.
+CATEGORIES_INVISIBLE = []
+CATEGORIES_BETA = ['html5', 'reflow', 'cookies', 'jskb']
 
 STATIC_CATEGORIES = ['richtext']
 # Where we'll read the static files from (can be a local path or a url).
 #STATIC_SOURCE_FORMAT = 'static_mode/%(category)s_%(version_level)s.py'
 STATIC_SOURCE_FORMAT = 'http://static.latest.ua-profiler.appspot.com/static_mode/%(category)s_%(version_level)s.py'
+SYSTEM_COOKIES = [SESSION_COOKIE_NAME]
 
 STATS_MEMCACHE_TIMEOUT = 0
 STATS_MEMCACHE_UA_ROW_NS = 'ua_row'
+STATS_MEMCACHE_UA_ROW_SCORE_NS = 'ua_row_score'
 STATS_SCORE_TRUE = 'yes'
 STATS_SCORE_FALSE = 'no'
 
@@ -75,8 +81,10 @@ STATS_SCORE_FALSE = 'no'
 DEBUG = False
 BUILD = 'production'
 SERVER_SOFTWARE = os.getenv('SERVER_SOFTWARE')
-if (users.is_current_user_admin() or
-    (SERVER_SOFTWARE is not None and 'Dev' in SERVER_SOFTWARE)):
+if (SERVER_SOFTWARE is not None and 'Dev' in SERVER_SOFTWARE):
   BUILD = 'development'
+  DEBUG = True
+# Logged in admins should get to see stack traces.
+if users.is_current_user_admin():
   DEBUG = True
 TEMPLATE_DEBUG = DEBUG

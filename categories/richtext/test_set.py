@@ -290,7 +290,7 @@ class RichTextTestSet(test_set_base.TestSet):
           # score is from 1 to 10.
           # display_value is the text for the cell.
     """
-    category_tests = GetTestsByCategory(test_key)
+    category_tests = self.GetTestsByCategory(test_key)
     num_tests = len(category_tests)
     if test_key in raw_scores:
       display_score = int(raw_scores[test_key])

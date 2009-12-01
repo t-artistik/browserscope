@@ -51,9 +51,18 @@ from categories import all_test_sets
 from categories import test_set_params
 from base import decorators
 from base import manage_dirty
+from base import summary_test_set
+from base import custom_filters
+
+from third_party.gviz import gviz_api
 
 
+MULTI_TEST_DRIVER_TEST_PAGE = '/multi_test_frameset'
+
+ABOUT_TPL = 'about.html'
 TEST_DRIVER_TPL = 'test_driver.html'
+MULTI_TEST_FRAMESET_TPL = 'multi_test_frameset.html'
+MULTI_TEST_DRIVER_TPL = 'multi_test_driver.html'
 
 
 #@decorators.trusted_tester_required
@@ -62,6 +71,7 @@ def Render(request, template, params={}, category=None):
   params['app_title'] = settings.APP_TITLE
   params['version_id'] = os.environ['CURRENT_VERSION_ID']
   params['build'] = settings.BUILD
+  params['resource_version'] = custom_filters.get_resource_version()
   params['epoch'] = int(time.time())
   params['request_path'] = request.get_full_path()
   params['request_path_lastbit'] = re.sub('^.+\/([^\/]+$)', '\\1', request.path)
@@ -85,15 +95,24 @@ def Render(request, template, params={}, category=None):
   params['sign_out'] = users.create_logout_url('/')
 
   # Creates a list of tuples categories and their ui names.
-  for i, test_set in enumerate(all_test_sets.GetTestSets()):
-    params['app_categories'].append([test_set.category, test_set.category_name])
+  for i, test_set in enumerate(all_test_sets.GetTestSetsIncludingBetas()):
+    # This way we can show beta categories in local dev.
+    if (settings.BUILD == 'development' or
+        (test_set.category in settings.CATEGORIES and
+         test_set.category not in settings.CATEGORIES_INVISIBLE) or
+        (params.has_key('stats_table_category') and
+         test_set.category == params['stats_table_category'])):
+      params['app_categories'].append([test_set.category,
+                                       test_set.category_name])
     # Select the current page's category.
     if category and category == test_set.category:
       params['app_category'] = test_set.category
       params['app_category_name'] = test_set.category_name
       params['app_category_index'] = i
 
-  if category != None and template != TEST_DRIVER_TPL:
+  if (category != None
+      and template not in (TEST_DRIVER_TPL, MULTI_TEST_DRIVER_TPL,
+                           MULTI_TEST_FRAMESET_TPL, ABOUT_TPL)):
     template = '%s/%s' % (category, template)
 
   return shortcuts.render_to_response(template, params)
@@ -104,11 +123,19 @@ def CategoryTest(request):
   """Loads the test frameset for a category."""
   category = re.sub('\/test.*', '', request.path)[1:]
   test_set = all_test_sets.GetTestSet(category)
+
+  testurl = ''
+  test_key = request.GET.get('test_key')
+  if test_key:
+    test = test_set.GetTest(test_key)
+    testurl = test.url
+
   params = {
     'category': test_set.category,
     'page_title': '%s - Tests' % test_set.category_name,
     'continue': request.GET.get('continue', ''),
     'autorun': request.GET.get('autorun', ''),
+    'testurl': testurl,
     'test_page': test_set.test_page
   }
   #return shortcuts.render_to_response('test_frameset.html', params)
@@ -126,10 +153,58 @@ def CategoryTestDriver(request):
     'continue': request.GET.get('continue', ''),
     'autorun': request.GET.get('autorun', ''),
     'test_page': test_set.test_page,
+    'testurl': request.GET.get('testurl', ''),
     'csrf_token': request.session.get('csrf_token'),
     'hide_footer': True
   }
   return Render(request, TEST_DRIVER_TPL, params, category)
+
+
+def MultiTestFrameset(request):
+  """Multi-Page Test Frameset - frames the multi-page test driver and the
+current test page"""
+  category = request.GET.get('category', '')
+  params = {
+    'page_title': 'Multi-Test Frameset',
+    'autorun': request.GET.get('autorun', 1),
+    'testurl': request.GET.get('testurl', ''),
+    'category': category
+  }
+  return Render(request, MULTI_TEST_FRAMESET_TPL, params, category)
+
+
+def MultiTestDriver(request):
+  """Multi-Page Test Driver - runs each of multiple tests in sequence in a
+single category"""
+  category = request.GET.get('category', '')
+  tests = all_test_sets.GetTestSet(category).tests
+  params = {
+    'page_title': 'Multi-Test Driver',
+    'tests': tests,
+    'autorun': request.GET.get('autorun'),
+    'testurl': request.GET.get('testurl'),
+    'category': category
+  }
+  return Render(request, MULTI_TEST_DRIVER_TPL, params, category)
+
+
+def About(request, category, category_title=None, overview='',
+          show_hidden=True, show_test_urls=False):
+  """Generic 'About' page."""
+  if None == category_title:
+    category_title = category.title()
+
+  tests = all_test_sets.GetTestSet(category).tests
+  if not show_hidden:
+    tests = [test for test in tests if test.IsVisible()]
+
+  params = {
+    'page_title': "What are the %s Tests?" % (category_title),
+    'overview': overview,
+    'tests': tests,
+    'show_test_urls': show_test_urls
+  }
+  return Render(request, ABOUT_TPL, params, category)
 
 
 def GetServer(request):
@@ -152,7 +227,8 @@ def Home(request):
     ScheduleRecentTestsUpdate()
 
   results_params = []
-  for category in settings.CATEGORIES:
+  for category in (settings.CATEGORIES + settings.CATEGORIES_INVISIBLE +
+                   settings.CATEGORIES_BETA):
     results_uri_string = request.GET.get('%s_results' % category)
     if results_uri_string:
       results_params.append('%s_results=%s' % (category, results_uri_string))
@@ -160,14 +236,19 @@ def Home(request):
   stats_tables = {}
   test_set = None
   category = request.GET.get('category')
-  if category:
+
+  if category == 'summary':
+    test_set = summary_test_set.TEST_SET
+  elif category:
     test_set = all_test_sets.GetTestSet(category)
   else:
     if len(results_params) > 0:
-      for category in settings.CATEGORIES:
+      for category in (settings.CATEGORIES + settings.CATEGORIES_INVISIBLE +
+                       settings.CATEGORIES_BETA):
         if request.GET.get('%s_results' % category):
           test_set = all_test_sets.GetTestSet(category)
           break
+
   # If we still got no test_set, take the first one in settings.CATEGORIES
   if not test_set:
     category = settings.CATEGORIES[0]
@@ -175,7 +256,7 @@ def Home(request):
 
   # Tell GetStats what to output.
   output = request.GET.get('o', 'html')
-  if output not in ['pickle', 'xhr', 'html', 'csv']:
+  if output not in ['html', 'pickle', 'xhr', 'csv', 'gviz', 'gviz_data']:
     return http.HttpResponse('Invalid output specified')
   stats_table = GetStats(request, test_set, output)
 
@@ -183,18 +264,42 @@ def Home(request):
   if category in settings.STATIC_CATEGORIES and output in ['xhr', 'html']:
     stats_table = '%s%s' % (STATIC_MESSAGE, stats_table)
 
-  if output in ['xhr', 'pickle', 'csv']:
+  if output in ['xhr', 'pickle', 'csv', 'gviz', 'gviz_data']:
     return http.HttpResponse(stats_table)
   else:
     params = {
       'page_title': 'Home',
       'results_params': '&'.join(results_params),
+      'v': request.GET.get('v', 'top'),
+      'ua_params': request.GET.get('ua', ''),
       'stats_table_category': test_set.category,
       'stats_table': stats_table,
       'recent_tests': recent_tests,
       'message': request.GET.get('message'),
     }
     return Render(request, 'home.html', params)
+
+
+def BrowseResults(request):
+  ua = request.GET.get('ua')
+  bookmark = request.GET.get('bookmark')
+  limit = int(request.GET.get('limit', 100))
+  order = request.GET.get('order', 'desc')
+  query = pager.PagerQuery(ResultParent, keys_only=True)
+  #query.filter()
+  if order == 'desc':
+    query.order('-created')
+  else:
+    query.order('created')
+
+  prev_bookmark, results, next_bookmark = query.fetch(fetch_limit, bookmark)
+
+  params = {
+    'prev_bookmark': prev_bookmark,
+    'next_bookmark': next_bookmark,
+    'results': results
+  }
+  return ''
 
 
 def Faq(request):
@@ -296,27 +401,27 @@ def ClearMemcache(request):
     else:
       categories = settings.CATEGORIES
 
+    browsers = []
     ua = request.GET.get('ua')
     version_level = request.GET.get('v')
     if ua:
-      user_agent_strings = ua.split(',')
-    elif version_level:
-      # TODO(slamm): XXX clear memcache properly
-      user_agent_strings = [] # UserAgentGroup.GetStrings(version_level)
-    else:
+      browsers = ua.split(',')
+      logging.info('browsers are: %s' % browsers)
+    elif not version_level:
       return http.HttpResponse('Either pass in ua= or v=')
 
     logging.info('categories are: %s' % categories)
-    logging.info('user_agent_strings are: %s' % user_agent_strings)
     for category in categories:
-      for user_agent in user_agent_strings:
-        memcache_ua_key = '%s_%s' % (category, user_agent)
-        memcache.delete(key=memcache_ua_key, seconds=0,
-                        namespace=settings.STATS_MEMCACHE_UA_ROW_NS)
-        logging.info('Deleting %s in memcache' % memcache_ua_key)
+      if not browsers:
+        browsers = result_stats.CategoryBrowserManager.GetBrowsers(
+            category, version_level)
+        result_stats.CategoryBrowserManager.DeleteMemcacheValue(
+            category, version_level)
+      result_stats.CategoryStatsManager.DeleteMemcacheValues(
+          category, browsers)
 
-    message.append('Cleared memcache for categories: %s and '
-                   'user_agent_strings: %s' % (categories, user_agent_strings))
+    message.append('Cleared memcache for categories: %s and browsers: %s' %
+                   (categories, browsers))
 
   # All done.
   if continue_url:
@@ -360,20 +465,19 @@ def Beacon(request):
   params_str = request.REQUEST.get('params')
 
   if not category or not results_str:
-    logging.debug('Got no category or results.')
+    logging.info('Got no category or results.')
     return http.HttpResponse(BAD_BEACON_MSG + 'Category/Results')
-  if settings.BUILD == 'production' and category not in settings.CATEGORIES:
+  if (settings.BUILD == 'production'
+      and category not in settings.CATEGORIES + settings.CATEGORIES_BETA):
     # Allows local developers to try out category beaconing.
-    logging.debug('Got a bogus category(%s) in production.' % category)
+    logging.info('Got a bogus category (%s).' % category)
     return http.HttpResponse(BAD_BEACON_MSG + 'Category in Production')
   if not all_test_sets.HasTestSet(category):
-    logging.debug('Could not get a test_set for category: %s' % category)
+    logging.info('Could not get a test_set for category: %s' % category)
     return http.HttpResponse(BAD_BEACON_MSG + 'TestSet')
 
   test_set = all_test_sets.GetTestSet(category)
-
   logging.info('Beacon category: %s\nresults_str: %s' % (category, results_str))
-  logging.info('js_user_agent_string: %s' % js_user_agent_string)
 
   if params_str:
     params_str = urllib.unquote(params_str)
@@ -425,6 +529,8 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
   results_str = request.GET.get('%s_results' % category, '')
   current_user_agent_string = request.META['HTTP_USER_AGENT']
 
+  browsers = browser_param and browser_param.split(',') or None
+
   if (not is_skip_static and category in settings.STATIC_CATEGORIES
       and output in ('html', 'xhr')):
     # Use pickle'd data to which we can integrate a user's results.
@@ -437,13 +543,14 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
       stats_data = pickle.loads(response.content)
     else:
       stats_data = pickle.load(open(static_source))
-    browsers = stats_data.keys()
-    result_stats.CategoryBrowserManager.SortBrowsers(browsers)
+    if not browsers:
+      browsers = stats_data.keys()
+      result_stats.CategoryBrowserManager.SortBrowsers(browsers)
     logging.info('Retrieved static stats: category=%s', category)
+  elif test_set.category == 'summary':
+    stats_data = GetSummaryData(browsers, version_level)
   else:
-    if browser_param:
-      browsers = browser_param.split(',')
-    else:
+    if not browsers:
       browsers = result_stats.CategoryBrowserManager.GetBrowsers(
           category, version_level)
     stats_data = result_stats.CategoryStatsManager.GetStats(
@@ -453,9 +560,12 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
   if output == 'pickle':
     return pickle.dumps(stats_data)
 
-  results = None
+  current_scores = None
   if results_str:
-    results = test_set.ParseResults(results_str, ignore_key_errors=True)
+    results = test_set.GetResults(results_str, ignore_key_errors=True)
+    current_scores = dict((test_key, result['raw_score'])
+                          for test_key, result in results.items())
+
 
   # Set current_browser to one in browsers or add it if not found.
   current_browser = UserAgent.factory(current_user_agent_string).pretty()
@@ -464,12 +574,13 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
       current_browser = browser
       break
   else:
-    if results:
-      UserAgentGroup.InsortBrowser(browsers, current_browser)
+    if current_scores:
+      result_stats.CategoryBrowserManager.InsortBrowser(
+          browsers, current_browser)
 
   # Adds the current results into the stats_data dict.
-  if results:
-    current_stats = test_set.GetStats(results)
+  if current_scores:
+    current_stats = test_set.GetStats(current_scores)
     browser_stats = stats_data.setdefault(current_browser, {})
     browser_stats['current_results'] = current_stats['results']
     browser_stats['current_score'] = current_stats['summary_score']
@@ -493,19 +604,99 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
   #logging.info("GetStats got params: %s", str(params))
   if output in ['html', 'xhr']:
     return GetStatsDataTemplatized(params, 'table')
-  elif output == 'csv':
-    return GetStatsDataTemplatized(params, 'csv')
+  elif output in ['csv', 'gviz']:
+    return GetStatsDataTemplatized(params, output)
+  elif output == 'gviz_data':
+    return FormatStatsDataAsGviz(params)
   else:
     return params
 
 
-def GetStatsDataTemplatized(params, template='html'):
+def FormatStatsDataAsGviz(params):
+  """Takes the output of GetStats and returns a GViz appropriate response.
+  This makes use of the Python GViz API on Google Code.
+  Copied roughly from:
+    http://code.google.com/p/google-visualization-python/source/browse/trunk/examples/dynamic_example.py
+  Args:
+    params: The dict output from GetStats.
+  Returns:
+    A JSON string as content in a text/plain HttpResponse.
+  """
+  columns_order = ['user_agent', 'score', 'total_runs']
+  description = {'user_agent': ('string', 'UserAgent'),
+                 'score': ('number', 'Score'),
+                 'total_runs': ('number', '# Tests')}
+  for test in params['tests']:
+    gviz_coltype = test.score_type
+    if test.score_type == 'custom':
+      gviz_coltype = 'number'
+    description[test.key] = (gviz_coltype, test.name)
+    columns_order.append(test.key)
+
+  data = []
+  stats = params['stats']
+  logging.info('Stats: %s' % stats)
+  for user_agent in params['user_agents']:
+    if stats[user_agent].has_key('results'):
+      row_data = {}
+      row_data['user_agent'] = user_agent
+      row_data['score'] = stats[user_agent]['score']
+      row_data['total_runs'] = stats[user_agent]['total_runs']
+      for test in params['tests']:
+        row_data[test.key] = stats[user_agent]['results'][test.key]['median']
+      data.append(row_data)
+
+  data_table = gviz_api.DataTable(description)
+  data_table.LoadData(data)
+  json = data_table.ToJSonResponse(columns_order=columns_order,
+                                   order_by='user_agent')
+  return http.HttpResponse(json, mimetype='text/plain')
+
+
+def GetSummaryData(user_agent_strings, version_level):
+  """Returns a data dictionary for rendering a summary stats_table.html"""
+  stats_data = {}
+  for user_agent in user_agent_strings:
+    ua_score_avg = 0
+    total_runs = 0
+    for test_set in all_test_sets.GetTestSets():
+      if not stats_data.has_key(user_agent):
+        stats_data[user_agent] = {
+          'total_runs': 0,
+          'results': {},
+          'score': 0,
+          'display': 0
+          }
+      memcache_ua_key = ResultParent.GetMemcacheKey(test_set.category,
+                                                    user_agent)
+      row_stats = memcache.get(key=memcache_ua_key,
+          namespace=settings.STATS_MEMCACHE_UA_ROW_SCORE_NS)
+      if not row_stats:
+        row_stats = {'row_score': 0, 'row_display': '', 'total_runs': 0}
+      stats_data[user_agent]['results'][test_set.category] = {
+          'median': row_stats['row_score'],
+          'score': Convert100to10Base(row_stats['row_score']),
+          'display': row_stats['row_display'],
+          'total_runs': row_stats['total_runs'],
+          'expando': None,
+          }
+      ua_score_avg += int(row_stats['row_score'])
+      total_runs += int(row_stats['total_runs'])
+
+    avg_score = int(ua_score_avg / len(settings.CATEGORIES))
+    stats_data[user_agent]['score'] = avg_score
+    stats_data[user_agent]['display'] = avg_score
+    stats_data[user_agent]['total_runs'] = total_runs
+  return stats_data
+
+
+def GetStatsDataTemplatized(params, template='table'):
   """Returns the stats table run through a template.
 
   Args:
     params: Example:
             params = {
-              'v': one of the keys in BROWSER_NAV,
+              'v': one of the keys in user_agent.BROWSER_NAV,
               'current_user_agent': a user agent entity,
               'user_agents': list_of user agents,
               'tests': list of test names,
@@ -521,8 +712,8 @@ def GetStatsDataTemplatized(params, template='html'):
   if not re.search('\?', params['request_path']):
     params['request_path'] = params['request_path'] + '?'
   t = loader.get_template('stats_%s.html' % template)
-  html = t.render(Context(params))
-  return html
+  template_rendered = t.render(Context(params))
+  return template_rendered
 
 
 @decorators.dev_appserver_only

@@ -29,9 +29,9 @@ class TestParseResults(unittest.TestCase):
   def testValidResultsStringGivesExpectedResults(self):
     results_str = 'apple=1,banana=5,coconut=500'
     expected_results = {
-        'apple': {'score': 1},
-        'banana': {'score': 5},
-        'coconut': {'score': 500},
+        'apple': {'raw_score': 1},
+        'banana': {'raw_score': 5},
+        'coconut': {'raw_score': 500},
         }
     test_set = mock_data.MockTestSet()
     results = test_set.ParseResults(results_str)
@@ -62,9 +62,9 @@ class TestGetResults(unittest.TestCase):
     results_str = 'apple=1,banana=2,coconut=3'
     test_set = mock_data.MockTestSet()
     expected_results = {
-        'apple': {'score': 1},
-        'banana': {'score': 2},
-        'coconut': {'score': 3},
+        'apple': {'raw_score': 1},
+        'banana': {'raw_score': 2},
+        'coconut': {'raw_score': 3},
         }
     self.assertEqual(expected_results, test_set.GetResults(results_str))
 

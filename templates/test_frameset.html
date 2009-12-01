@@ -14,13 +14,13 @@
       testDriverFrame.testDriver.sendScore(results, continueParams);
     };
   </script>
-  <frameset rows="{% if autorun %}80{% else %}160{% endif %},*">
+  <frameset rows="{% if autorun %}80{% else %}120{% endif %},*">
     <frame
       id="bs-test-driver"
       name="bs-test-driver"
       frameborder="0"
       scrolling="no"
-      src="/category_test_driver?category={{ category}}&continue={{ continue }}&autorun={{ autorun }}&rand={{ epoch }}">
+      src="/category_test_driver?category={{ category}}&continue={{ continue }}&autorun={{ autorun }}&rand={{ epoch }}&testurl={{ testurl }}">
     <frame
       id="bs-test-frame"
       name="bs-test-frame"

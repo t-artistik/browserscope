@@ -60,32 +60,32 @@ class ReflowTestTest(unittest.TestCase):
   def testAdjustResults(self):
     reflow_test_set = test_set.TEST_SET
     results = {
-      test_set.BASELINE_TEST_NAME: {'score': 100},
-      'testTwo': {'score': 50},
-      'testThree': {'score': 150},
-      'testThree': {'score': 200},
+      test_set.BASELINE_TEST_NAME: {'raw_score': 100},
+      'testTwo': {'raw_score': 50},
+      'testThree': {'raw_score': 150},
+      'testThree': {'raw_score': 200},
       }
     parsed_results = reflow_test_set.AdjustResults(results)
     expected_results = {
-      test_set.BASELINE_TEST_NAME: {'expando': 100, 'score': 100},
-      'testTwo': {'expando': 50, 'score': 50},
-      'testThree': {'expando': 150, 'score': 150},
-      'testThree': {'expando': 200, 'score': 200},
+      test_set.BASELINE_TEST_NAME: {'expando': 100, 'raw_score': 100},
+      'testTwo': {'expando': 50, 'raw_score': 50},
+      'testThree': {'expando': 150, 'raw_score': 150},
+      'testThree': {'expando': 200, 'raw_score': 200},
       }
     self.assertTrue(expected_results == parsed_results)
 
     results = {
-      test_set.BASELINE_TEST_NAME: {'score': 400},
-      'testTwo': {'score': 300},
-      'testThree': {'score': 276},
-      'testThree': {'score': 149},
+      test_set.BASELINE_TEST_NAME: {'raw_score': 400},
+      'testTwo': {'raw_score': 300},
+      'testThree': {'raw_score': 276},
+      'testThree': {'raw_score': 149},
       }
     parsed_results = reflow_test_set.AdjustResults(results)
     expected_results = {
-      test_set.BASELINE_TEST_NAME: {'expando': 400, 'score': 100},
-      'testTwo': {'expando': 300, 'score': 75},
-      'testThree': {'expando': 276, 'score': 69},
-      'testThree': {'expando': 149, 'score': 37},
+      test_set.BASELINE_TEST_NAME: {'expando': 400, 'raw_score': 100},
+      'testTwo': {'expando': 300, 'raw_score': 75},
+      'testThree': {'expando': 276, 'raw_score': 69},
+      'testThree': {'expando': 149, 'raw_score': 37},
       }
     self.assertTrue(expected_results == parsed_results)
 

@@ -35,43 +35,13 @@ CATEGORY = 'network'
 
 TEST_PAGE = '/%s/frameset' % CATEGORY
 
+RESOURCE_CGI = '1.cuzillion.com/bin/resource.cgi'
+RESOURCE_CGI2 = '2.cuzillion.com/bin/resource.cgi'
+#RESOURCE_CGI = 'browsersrc.com/cgi-bin/resource.cgi'
 
 def About(request):
   """About page."""
-  params = {
-    'page_title': 'What are the Network Tests?',
-    'tests': all_test_sets.GetTestSet(CATEGORY).tests,
-  }
-  return util.Render(request, 'templates/about.html', params, CATEGORY)
-
-
-def Frameset(request):
-  params = {
-    'page_title': 'Network Performance - Tests',
-    'autorun': request.GET.get('autorun', 1),
-    'testurl': request.GET.get('testurl', ''),
-  }
-  return util.Render(request, 'templates/test.html', params, CATEGORY)
-
-
-def TestDriver(request):
-  """Network Performance Test Driver"""
-  tests = all_test_sets.GetTestSet(CATEGORY).tests
-  # tests = [tests[0]]
-  params = {
-    'page_title': 'Performance Test Driver',
-    'tests': tests,
-    'autorun': request.GET.get('autorun'),
-    'testurl': request.GET.get('testurl'),
-  }
-  return util.Render(request, 'templates/testdriver.html', params, CATEGORY)
-
-
-def StatsTable(request):
-  params = {
-    'stats_table': util.GetStats(request, CATEGORY)
-  }
-  return util.Render(request, 'templates/stats_table.html', params, CATEGORY)
+  return util.About(request, CATEGORY)
 
 
 def Faq(request):
@@ -79,6 +49,8 @@ def Faq(request):
 
   params = {
     'page_title': 'Performance FAQ',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
   }
   return util.Render(request, 'templates/faq.html', params, CATEGORY)
 
@@ -88,6 +60,8 @@ def CacheExpires(request):
 
   params = {
     'page_title': 'Performance Cache Expires Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
   }
   return util.Render(request, 'templates/tests/cache-expires.html', params,
                      CATEGORY)
@@ -105,6 +79,8 @@ def CacheExpires2(request):
   params = {
     'page_title': 'Performance Cache Expires Test',
     'prevt': prevt,
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
   }
   return util.Render(request, 'templates/tests/cache-expires2.html', params,
                      CATEGORY)
@@ -115,6 +91,8 @@ def CacheRedirects(request):
 
   params = {
     'page_title': 'Performance Cache Redirects Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
   }
   return util.Render(request, 'templates/tests/cache-redirects.html', params,
                      CATEGORY)
@@ -131,6 +109,8 @@ def CacheRedirects2(request):
 
   params = {
     'page_title': 'Performance Cache Redirects Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
     'prevt': prevt,
   }
   return util.Render(request, 'templates/tests/cache-redirects2.html', params,
@@ -142,6 +122,8 @@ def CacheResourceRedirects(request):
 
   params = {
     'page_title': 'Performance Cache Resource Redirects Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
   }
   return util.Render(request, 'templates/tests/cache-resource-redirects.html',
                      params, CATEGORY)
@@ -158,6 +140,8 @@ def CacheResourceRedirects2(request):
 
   params = {
     'page_title': 'Performance Cache Resource Redirects Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
     'prevt': prevt,
   }
   return util.Render(request, 'templates/tests/cache-resource-redirects2.html',
@@ -172,6 +156,8 @@ def ConnectionsPerHostname(request):
 
   params = {
     'page_title': 'Performance Connections per Hostname Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
     'sleep': sleep,
     'latency': latency,
   }
@@ -184,6 +170,8 @@ def DataUrls(request):
 
   params = {
     'page_title': 'Performance Data URLs Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
   }
   return util.Render(request, 'templates/tests/data-urls.html', params,
                      CATEGORY)
@@ -197,6 +185,8 @@ def Gzip(request):
 
   params = {
     'page_title': 'Performance Gzip Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
   }
   return util.Render(request, 'templates/tests/gzip.html', params, CATEGORY)
 
@@ -206,6 +196,8 @@ def InlineScriptAfterStylesheet(request):
 
   params = {
     'page_title': 'Performance Inline Script After Stylesheet Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
   }
   return util.Render(request,
                      'templates/tests/inline-script-after-stylesheet.html',
@@ -217,6 +209,8 @@ def Latency(request):
 
   params = {
     'page_title': 'Performance Latency Measurement',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
   }
   return util.Render(request, 'templates/tests/latency.html', params, CATEGORY)
 
@@ -226,6 +220,8 @@ def LinkPrefetch(request):
 
   params = {
     'page_title': 'Performance Link Prefetch Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
   }
   return util.Render(request, 'templates/tests/link-prefetch.html', params,
                      CATEGORY)
@@ -242,6 +238,8 @@ def LinkPrefetch2(request):
 
   params = {
     'page_title': 'Performance Link Prefetch Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
     'prevt': prevt,
   }
   return util.Render(request, 'templates/tests/link-prefetch2.html', params,
@@ -256,6 +254,8 @@ def MaxConnections(request):
 
   params = {
     'page_title': 'Performance Max Connections Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
     'sleep': sleep
   }
   return util.Render(request, 'templates/tests/max-connections.html', params,
@@ -267,8 +267,58 @@ def ScriptsBlock(request):
 
   params = {
     'page_title': 'Performance Scripts Block Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
   }
   return util.Render(request, 'templates/tests/scripts-block.html', params,
+                     CATEGORY)
+
+
+def ScriptsBlockScripts(request):
+  """Network Performance Scripts Block Scripts Test"""
+
+  params = {
+    'page_title': 'Performance Scripts Block Scripts Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
+  }
+  return util.Render(request, 'templates/tests/scripts-block-scripts.html', params,
+                     CATEGORY)
+
+
+def ScriptsBlockStylesheets(request):
+  """Network Performance Scripts Block Stylesheets Test"""
+
+  params = {
+    'page_title': 'Performance Scripts Block Stylesheets Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
+  }
+  return util.Render(request, 'templates/tests/scripts-block-stylesheets.html', params,
+                     CATEGORY)
+
+
+def ScriptsBlockImages(request):
+  """Network Performance Scripts Block Images Test"""
+
+  params = {
+    'page_title': 'Performance Scripts Block Images Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
+  }
+  return util.Render(request, 'templates/tests/scripts-block-images.html', params,
+                     CATEGORY)
+
+
+def ScriptsBlockIframes(request):
+  """Network Performance Scripts Block Iframes Test"""
+
+  params = {
+    'page_title': 'Performance Scripts Block Iframes Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
+  }
+  return util.Render(request, 'templates/tests/scripts-block-iframes.html', params,
                      CATEGORY)
 
 
@@ -277,34 +327,9 @@ def StylesheetsBlock(request):
 
   params = {
     'page_title': 'Performance Stylesheets Block Test',
+    'resource_cgi': RESOURCE_CGI,
+    'resource_cgi2': RESOURCE_CGI2,
   }
   return util.Render(request, 'templates/tests/stylesheets-block.html', params,
                      CATEGORY)
 
-
-def Admin(request):
-  """Network Performance Admin Tools"""
-
-  params = {
-    'page_title': 'Performance Admin Tools',
-  }
-  return util.Render(request, 'templates/admin/admin.html', params, CATEGORY)
-
-
-def ConfirmUa(request):
-  """Network Performance Confirm User-Agents"""
-
-  params = {
-    'page_title': 'Performance Confirm User-Agents',
-  }
-  return util.Render(request, 'templates/admin/confirm-ua.html')
-
-
-def Stats(request):
-  """Network Performance Stats"""
-
-  params = {
-    'page_title': 'Performance Stats',
-    'epoch': epochTime(),
-  }
-  return util.Render(request, 'templates/admin/stats.html', params, CATEGORY)

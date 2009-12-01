@@ -35,19 +35,21 @@ class ResultTime(db.Model):
   dirty = db.BooleanProperty(default=True)
 
   def UpdateStats(self):
+    logging.info('ResultTime.UpdateStats for test: %s, score: %s' %
+                 (self.test, self.score))
     for ranker in self.GetOrCreateRankers():
       ranker.Add(self.score)
 
   def GetOrCreateRankers(self):
     parent = self.parent()
     test_set = all_test_sets.GetTestSet(parent.category)
-    try:
-      test = test_set.GetTest(self.test)
-    except KeyError:
+    test = test_set.GetTest(self.test)
+    if test:
+      params_str = parent.params_str or None
+      return test.GetOrCreateRankers(parent.GetBrowsers(), params_str)
+    else:
       logging.warn('Test key not found in test_set: %s', self.test)
       return []
-    params_str = parent.params_str or None
-    return test.GetOrCreateRankers(parent.GetBrowsers(), params_str)
 
 
 class ResultParent(db.Expando):
@@ -111,7 +113,7 @@ class ResultParent(db.Expando):
       for test_key, values in results.items():
         db.put(ResultTime(parent=parent,
                           test=test_key,
-                          score=values['score'],
+                          score=values['raw_score'],
                           dirty=not is_import))
     db.run_in_transaction(_AddResultInTransaction)
     parent.ScheduleDirtyUpdate(parent.key())
@@ -123,6 +125,7 @@ class ResultParent(db.Expando):
         method='GET', params={'result_parent_key': result_parent_key})
     task.add(queue_name='update-dirty')
 
+
   @classmethod
   def UpdateStatsFromDirty(cls, dirty_query):
     """Aggregate the results of dirty ResultTime's.
@@ -131,16 +134,22 @@ class ResultParent(db.Expando):
       dirty_query: a DirtyResultTimesQuery instance
     """
     dirty_result_times = dirty_query.Fetch()
+    logging.info('dirty_result_times: %s' % dirty_result_times)
     if dirty_result_times:
       result_parent = dirty_result_times[0].parent()
+      logging.info('ResultParent category: %s, ua: %s' %
+                   (result_parent.category, result_parent.user_agent.pretty()))
       is_stats_update_needed = (result_parent.category in settings.CATEGORIES or
                                 settings.BUILD != 'production')
+      if not is_stats_update_needed:
+        logging.info('Skipping UpdateStats for result_times.')
       for result_time in dirty_result_times:
         if is_stats_update_needed:
           result_time.UpdateStats()
         result_time.dirty = False
       db.put(dirty_result_times)
       if is_stats_update_needed and dirty_query.IsResultParentDone():
+        logging.info('Scheduling CategoryUpdate.')
         result_stats.ScheduleCategoryUpdate(result_parent.category,
                                             result_parent.user_agent)
 

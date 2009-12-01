@@ -112,7 +112,7 @@ browser_slash_v123_names = (
     'Demeter|Fluid|Fennec|Shiira|Sunrise|Chrome|Flock|Netscape|Lunascape|'
     'Epiphany|WebPilot|Vodafone|NetFront|Konqueror|SeaMonkey|Kazehakase|'
     'Vienna|Iceape|Iceweasel|IceWeasel|Iron|K-Meleon|Sleipnir|Galeon|'
-    'GranParadiso|Opera Mini|iCab|NetNewsWire|Iron')
+    'GranParadiso|Opera Mini|iCab|NetNewsWire|Iron|Iris')
 
 browser_slash_v12_names = (
     'Bolt|Jasmine|Maxthon|Lynx|Arora|IBrowse|Dillo|Camino|Shiira|Fennec|'
@@ -120,7 +120,7 @@ browser_slash_v12_names = (
     'Opera Mini|Opera|Vodafone|'
     'NetFront|Konqueror|SeaMonkey|Kazehakase|Vienna|Iceape|Iceweasel|IceWeasel|'
     'Iron|K-Meleon|Sleipnir|Galeon|GranParadiso|'
-    'iCab|NetNewsWire|Iron|Space Bison|Stainless')
+    'iCab|NetNewsWire|Iron|Space Bison|Stainless|Orca')
 
 _P = UserAgentParser
 USER_AGENT_PARSERS = (
@@ -153,6 +153,8 @@ USER_AGENT_PARSERS = (
   # catches lower case konqueror
   _P(r'(konqueror)/(\d+)\.(\d+)\.(\d+)', 'Konqueror'),
 
+  # Maemo
+
   #### END SPECIAL CASES TOP ####
 
   #### MAIN CASES - this catches > 50% of all browsers ####
@@ -161,7 +163,7 @@ USER_AGENT_PARSERS = (
   # Browser/v1.v2
   _P(r'(%s)/(\d+)\.(\d+)' % browser_slash_v12_names),
   # Browser v1.v2.v3 (space instead of slash)
-  _P(r'(iRider|Crazy Browser|SkipStone|iCab|Lunascape|Sleipnir) (\d+)\.(\d+)\.(\d+)'),
+  _P(r'(iRider|Crazy Browser|SkipStone|iCab|Lunascape|Sleipnir|Maemo Browser) (\d+)\.(\d+)\.(\d+)'),
   # Browser v1.v2 (space instead of slash)
   _P(r'(iCab|Lunascape|Opera|Android) (\d+)\.(\d+)'),
   _P(r'(IEMobile) (\d+)\.(\d+)', 'IE Mobile'),
@@ -271,7 +273,9 @@ class UserAgent(db.Expando):
       family, v1, v2, v3 = parser.Parse(user_agent_string)
       if family:
         break
-    if js_user_agent_string and user_agent_string.find('chromeframe') > -1:
+    # Override for Chrome Frame IFF Chrome is enabled.
+    if (js_user_agent_string and js_user_agent_string.find('Chrome/') > -1 and
+        user_agent_string.find('chromeframe') > -1):
       family = 'Chrome Frame (%s %s)' % (family, v1)
       cf_family, v1, v2, v3 = cls.parse(js_user_agent_string)
     return family or 'Other', v1, v2, v3
