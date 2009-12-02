@@ -36,18 +36,21 @@ import settings
 
 def UserAgentGroup(request):
   category = request.REQUEST.get('category')
-  user_agent_key = db.Key(request.REQUEST.get('user_agent_key'))
+  user_agent_key = request.REQUEST.get('user_agent_key')
   if not category:
-    return http.HttpResponse('No cateogry')
-  if (category not in settings.CATEGORIES or
+    return http.HttpResponse('No category')
+  if (category not in settings.CATEGORIES and
       category not in settings.CATEGORIES_BETA):
-    return http.HttpResponse('Bad cateogry: %s' % category)
+    return http.HttpResponse('Bad category: %s' % category)
   if not user_agent_key:
     return http.HttpResponse('No key')
-  user_agent = UserAgent.get(user_agent_key)
+  try:
+    user_agent = UserAgent.get(db.Key(user_agent_key))
+  except db.BadKeyError:
+    return http.HttpResponse('Invalid UserAgent key: %s' % user_agent_key)
   if user_agent:
     result_stats.UpdateCategory(category, user_agent)
-    return http.HttpResponse('Done with UserAgent key=%s' % key)
+    return http.HttpResponse('Done with UserAgent key=%s' % user_agent_key)
   else:
     return http.HttpResponse('No user_agent with this key.')
 

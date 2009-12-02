@@ -87,7 +87,7 @@
             >
             <td
               scope="row"
-              class="rt-ua rt-ua-s-{{ stats|by_key:user_agent|by_key:"score" }}">
+              class="rt-ua rt-ua-s-{{ stats|by_key:user_agent|by_key:"summary_score" }}">
               {% ifequal user_agent current_user_agent %}
                 <span class="bs-cur-ua goog-inline-block"></span>
               {% endifequal %}
@@ -99,7 +99,7 @@
 
             <td
               class="rt-ua-s-d rt-ua-s-{{ stats|by_key:user_agent|by_key:"score" }}">
-              {{ stats|by_key:user_agent|by_key:"display" }}
+              {{ stats|by_key:user_agent|by_key:"summary_display" }}
             </td>
 
             {% for test in tests %}

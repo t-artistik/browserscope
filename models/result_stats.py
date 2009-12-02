@@ -23,6 +23,9 @@ from google.appengine.ext import db
 from google.appengine.api import memcache
 from google.appengine.api.labs import taskqueue
 
+from categories import all_test_sets
+
+
 BROWSER_NAV = (
   # version_level, label
   ('top', 'Top Browsers'),
@@ -165,7 +168,7 @@ class CategoryBrowserManager(db.Model):
 class CategoryStatsManager(object):
   """Manage statistics for a category."""
 
-  MEMCACHE_NAMESPACE_PREFIX = 'category_stats_'
+  MEMCACHE_NAMESPACE_PREFIX = 'category_stats'
 
   @classmethod
   def GetStats(cls, test_set, browsers, use_memcache=True):
@@ -207,8 +210,8 @@ class CategoryStatsManager(object):
     return stats
 
   @classmethod
-  def UpdateStatsCache(cls, test_set, user_agent):
-    category = test_set.category
+  def UpdateStatsCache(cls, category, user_agent):
+    test_set = all_test_sets.GetTestSet(category)
     ua_stats = {}
     for browser in user_agent.get_string_list():
       medians, num_scores = test_set.GetMediansAndNumScores(browser)
@@ -237,7 +240,7 @@ def ScheduleCategoryUpdate(category, user_agent):
   The task is handled by base.cron.UserAgentGroup().
   That method calls UpdateCategory().
   """
-  task = taskqueue.Task(params={
+  task = taskqueue.Task(method='GET', params={
       'category': category,
       'user_agent_key': user_agent.key(),
       })

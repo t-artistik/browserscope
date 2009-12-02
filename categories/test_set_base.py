@@ -209,6 +209,8 @@ class TestSet(object):
     for test, ranker in zip(self.tests, self.GetRankers(browser)):
       if ranker:
         medians[test.key], num_scores[test.key] = ranker.GetMedianAndNumScores()
+      else:
+        medians[test.key], num_scores[test.key] = None, 0
     logging.info('GetMediansAndNumScores: category=%s, medians=%s, num_scores=%s',
                  self.category, medians, num_scores)
     return medians, num_scores
@@ -247,12 +249,12 @@ class TestSet(object):
     results = {}
     total_runs = 0
     for test_key, raw_score in raw_scores.items():
-      if raw_score is None:
-        score, display = 0, ''
-      elif self.IsVisibleTest(test_key):
+      if self.IsVisibleTest(test_key):
         if num_scores:
           total_runs = max(total_runs, num_scores[test_key])
-        if self.IsBooleanTest(test_key):
+        if raw_score is None:
+          score, display = 0, ''
+        elif self.IsBooleanTest(test_key):
           if raw_score:
             score, display = 10, settings.STATS_SCORE_TRUE
           else:
@@ -271,7 +273,7 @@ class TestSet(object):
         'summary_display': summary_display,
         'results': results,
         }
-    if num_scores:
+    if num_scores is not None:
       stats['total_runs'] = total_runs
     return stats
 

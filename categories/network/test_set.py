@@ -41,8 +41,6 @@ class NetworkTest(test_set_base.TestBase):
       is_hidden_stat: whether or not the test shown in the stats table
       cell_align: 'right', 'left', or 'center' for output formating
     """
-    self.url_name = url_name
-    self.is_hidden_stat = is_hidden_stat
     test_set_base.TestBase.__init__(
         self,
         key=key,
@@ -51,7 +49,8 @@ class NetworkTest(test_set_base.TestBase):
         doc=doc,
         min_value=min_value,
         max_value=max_value,
-        cell_align=cell_align)
+        cell_align=cell_align,
+        is_hidden_stat=is_hidden_stat)
 
 
 class BooleanNetworkTest(NetworkTest):
