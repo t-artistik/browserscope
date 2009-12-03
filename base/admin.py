@@ -165,6 +165,7 @@ def WTF(request):
     return http.HttpResponse('No user_agent with this key.')
 
 def DataDump(request):
+  logging.info('DataDump')
   bookmark = request.GET.get('bookmark')
   created = request.GET.get('created')
   if created:
@@ -187,60 +188,86 @@ def DataDump(request):
   if created:
     query.filter('created >=', created)
   query.order('created')
-  prev_bookmark, results, next_bookmark = query.fetch(fetch_limit, bookmark)
+  logging.info('DataDump: fetch')
+  try:
+    prev_bookmark, results, next_bookmark = query.fetch(fetch_limit, bookmark)
+  except db.Timeout:
+    logging.warn('db.Timeout during initial fetch.')
+    return http.HttpResponseServerError('db.Timeout during initial fetch.')
+  logging.info('DataDump: results, len=%s', len(results))
 
-  if model == 'ResultParent':
-    data = []
-    result_time_query = ResultTime.gql('WHERE ANCESTOR IS :1')
-    last_result_parent_key = None
-    for result_parent_key in results:
-      if (last_result_parent_key and
-          (datetime.datetime.now() - start_time).seconds > time_limit):
-        # There is more to process, but we have run out of time.
-        next_bookmark = query.get_bookmark(last_result_parent_key)
-        break
-      last_result_parent_key = result_parent_key
-      p = ResultParent.get(result_parent_key)
-      data.append({
-          'model_class': 'ResultParent',
-          'result_parent_key': str(result_parent_key),
-          'category': p.category,
-          'user_agent_key': str(p.user_agent.key()),
-          'ip': p.ip,
-          'user_id': p.user and p.user.user_id() or None,
-          'created': p.created and p.created.isoformat() or None,
-          'params_str': p.params_str,
-          'loader_id': hasattr(p, 'loader_id') and p.loader_id or None,
-          })
-      result_time_query.bind(result_parent_key)
-      for result_time in result_time_query.fetch(1000):
+  try:
+    if model == 'ResultParent':
+      data = []
+      result_time_query = ResultTime.gql('WHERE ANCESTOR IS :1')
+      last_result_parent_key = None
+      for result_parent_key in results:
+        if (datetime.datetime.now() - start_time).seconds > time_limit:
+          if last_result_parent_key:
+            # There is more to process, but we have run out of time.
+            next_bookmark = query.get_bookmark(last_result_parent_key)
+          else:
+            next_bookmark = bookmark
+        try:
+          p = ResultParent.get(result_parent_key)
+          user_agent_key = str(
+              ResultParent.user_agent.get_value_for_datastore(p))
+          result_time_query.bind(result_parent_key)
+          result_times = result_time_query.fetch(1000)
+        except db.Timeout:
+          # Try again in another request
+          if last_result_parent_key:
+            next_bookmark = query.get_bookmark(last_result_parent_key)
+          else:
+            next_bookmark = bookmark
+          break
+        last_result_parent_key = result_parent_key
+
         data.append({
-            'model_class': 'ResultTime',
-            'result_time_key': str(result_time.key()),
+            'model_class': 'ResultParent',
             'result_parent_key': str(result_parent_key),
-            'test': result_time.test,
-            'score': result_time.score,
+            'category': p.category,
+            'user_agent_key': user_agent_key,
+            'ip': p.ip,
+            'user_id': p.user and p.user.user_id() or None,
+            'created': p.created and p.created.isoformat() or None,
+            'params_str': p.params_str,
+            'loader_id': hasattr(p, 'loader_id') and p.loader_id or None,
             })
-  elif model == 'UserAgent':
-    data = [{
-        'model_class': 'UserAgent',
-        'user_agent_key': str(ua.key()),
-        'string': ua.string,
-        'family': ua.family,
-        'v1': ua.v1,
-        'v2': ua.v2,
-        'v3': ua.v3,
-        'confirmed': ua.confirmed,
-        'created': ua.created and ua.created.isoformat() or None,
-        'js_user_agent_string': (hasattr(ua, 'js_user_agent_string') and
-                                 ua.js_user_agent_string or None),
-        } for ua in results]
-  response_params = {
-      'bookmark': next_bookmark,
-      'fetch_limit': fetch_limit,
-      'time_limit': time_limit,
-      'data': data,
-      'model': model,
-      }
+        for result_time in result_times:
+          data.append({
+              'model_class': 'ResultTime',
+              'result_time_key': str(result_time.key()),
+              'result_parent_key': str(result_parent_key),
+              'test': result_time.test,
+              'score': result_time.score,
+              })
+    elif model == 'UserAgent':
+      data = [{
+          'model_class': 'UserAgent',
+          'user_agent_key': str(ua.key()),
+          'string': ua.string,
+          'family': ua.family,
+          'v1': ua.v1,
+          'v2': ua.v2,
+          'v3': ua.v3,
+          'confirmed': ua.confirmed,
+          'created': ua.created and ua.created.isoformat() or None,
+          'js_user_agent_string': (hasattr(ua, 'js_user_agent_string') and
+                                   ua.js_user_agent_string or None),
+          } for ua in results]
+    response_params = {
+        'bookmark': next_bookmark,
+        'fetch_limit': fetch_limit,
+        'time_limit': time_limit,
+        'data': data,
+        'model': model,
+        }
+  except Exception:
+    import traceback
+    error = traceback.format_exc()
+    logging.info("Uh-oh: %s", error)
+    return http.HttpResponse('bailing: %s' % error)
+  logging.info('DataDump: data=%s', response_params)
   return http.HttpResponse(content=simplejson.dumps(response_params),
                            content_type='application/json')

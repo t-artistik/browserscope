@@ -186,10 +186,10 @@ class DataDumpRpcServer(object):
     rpc_params = dict((key, value)
                       for key, value in kwds.items() if value is not None)
 
-    # "payload=None" forces a GET request instead of a POST (default).
     logging.info(
         'http://%s%s%s', self.host, self.path, rpc_params and '?%s' % '&'.join(
         ['%s=%s' % (k, v) for k, v in sorted(rpc_params.items())]) or '')
+    # "payload=None" forces a GET request instead of a POST (default).
     response_data = self.rpc_server.Send(self.path, payload=None, **rpc_params)
     return simplejson.loads(response_data)
 
@@ -230,8 +230,8 @@ class DataDumpRpcServer(object):
 def ParseArgs(argv):
   options, args = getopt.getopt(
       argv[1:],
-      'h:u:p:f:',
-      ['host=', 'gae_user=', 'params=', 'mysql_default_file='])
+      'h:e:p:f:',
+      ['host=', 'email=', 'params=', 'mysql_default_file='])
   host = None
   gae_user = None
   params = None
