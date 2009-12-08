@@ -62,6 +62,22 @@ class UserAgentTest(unittest.TestCase):
     ua_string = 'SomethingWeNeverKnewExisted'
     self.assertEqual(('Other', None, None, None), UserAgent.parse(ua_string))
 
+  def test_parse_pretty(self):
+    browsers = (
+        ('Chrome Frame (IE 6) 4.0.223', ('Chrome Frame (IE 6)', '4', '0', '223')),
+        ('Firefox 3.0', ('Firefox', '3', '0', None)),
+        ('Firefox 3.0pre', ('Firefox', '3', '0pre', None)),
+        ('Firefox 3.0b5', ('Firefox', '3', '0b5', None)),
+        ('Firefox (Shiretoko) 3.5.6pre', ('Firefox (Shiretoko)', '3', '5', '6pre')),
+        ('Firefox 3.5.4', ('Firefox', '3', '5', '4')),
+        ('Opera Mini 5.0.16875', ('Opera Mini', '5', '0', '16875')),
+        ('OLPC 0', ('OLPC', '0', None, None)),
+        ('Sony Ericsson K800i', ('Sony Ericsson K800i', None, None, None)),
+        ('Space Bison 0.02', ('Space Bison', '0', '02', None)),
+        ('Teleca Q7', ('Teleca Q7', None, None, None)),
+        )
+    for browser, parts in browsers:
+      self.assertEqual(parts, UserAgent.parse_pretty(browser))
 
   def test_get_string_list(self):
     ua_string = ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
@@ -113,7 +129,7 @@ class UserAgentTest(unittest.TestCase):
                      UserAgent.parse_to_string_list('Chrome 5.4.3'))
 
     self.assertEqual(
-        ['Safari', 'Safari 100', 'Safari 100.33', 'Safari 100.33preA4'],
+        ['Safari', 'Safari 100', 'Safari 100.33preA4'],
         UserAgent.parse_to_string_list('Safari 100.33preA4'))
 
 

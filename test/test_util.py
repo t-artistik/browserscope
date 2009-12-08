@@ -91,7 +91,7 @@ class TestBeacon(unittest.TestCase):
 
     result_times = result_parent.GetResultTimes()
     self.assertEqual(
-        [('apple', 1, True), ('banana', 2, True), ('coconut', 4, True)],
+        [('apple', 1, False), ('banana', 2, False), ('coconut', 4, False)],
         sorted((x.test, x.score, x.dirty) for x in result_times))
 
 
@@ -129,7 +129,7 @@ class TestBeacon(unittest.TestCase):
     # Were ResultTimes created?
     result_times = result_parent.GetResultTimes()
     self.assertEqual(
-        [('apple', 0, True), ('banana', 0, True), ('coconut', 1000, True)],
+        [('apple', 0, False), ('banana', 0, False), ('coconut', 1000, False)],
         sorted((x.test, x.score, x.dirty) for x in result_times))
 
   def testBeaconWithBogusTests(self):

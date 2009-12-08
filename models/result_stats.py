@@ -24,7 +24,7 @@ from google.appengine.api import memcache
 from google.appengine.api.labs import taskqueue
 
 from categories import all_test_sets
-
+from models.user_agent import UserAgent
 
 BROWSER_NAV = (
   # version_level, label
@@ -135,7 +135,7 @@ class CategoryBrowserManager(db.Model):
       browsers: a list of strings
           e.g. ['iPhone 3.1', 'Firefox 3.01', 'Safari 4.1']
     """
-    browsers.sort(key=lambda x: x.lower())
+    browsers.sort(key=cls.BrowserKey)
 
   @classmethod
   def InsortBrowser(cls, browsers, browser):
@@ -145,15 +145,40 @@ class CategoryBrowserManager(db.Model):
       browsers: a list of strings (e.g. ['iPhone 3.1', 'Safari 4.1'])
       browser: a list of strings
     """
-    lowercase_browser = browser.lower()
+    browser_key = cls.BrowserKey(browser)
     low, high = 0, len(browsers)
     while low < high:
       mid = (low + high) / 2
-      if lowercase_browser < browsers[mid].lower():
+      if browser_key < cls.BrowserKey(browsers[mid]):
         high = mid
       else:
         low = mid + 1
     browsers.insert(low, browser)
+
+  @classmethod
+  def BrowserKey(cls, browser):
+    VERSION_DIGITS = 8
+    MAX_VERSION = 99999999
+    family, v1, v2, v3 = UserAgent.parse_pretty(browser.lower())
+    return (family.lower(),
+            cls._BrowserKeyPart(v1),
+            cls._BrowserKeyPart(v2),
+            cls._BrowserKeyPart(v3))
+
+  @classmethod
+  def _BrowserKeyPart(cls, v):
+    if v is None:
+      return ''
+    elif v.isdigit():
+      digits = int(v or 0) + 1
+      nondigits = ' ' * 8
+    else:
+      nondigit_index = 0
+      while v[nondigit_index].isdigit():
+        nondigit_index += 1
+      digits, nondigits = int(v[:nondigit_index]), v[nondigit_index:]
+    return '%.08d %-8s' % (digits, nondigits)
+
 
   @classmethod
   def KeyName(cls, category, version_level):

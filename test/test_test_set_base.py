@@ -77,6 +77,7 @@ class TestGetStats(unittest.TestCase):
         'summary_score': 0,
         'summary_display': '0',
         'results': {},
+        'total_runs': 0,
         }
     self.assertEqual(expected_stats, self.test_set.GetStats({}, {}))
 

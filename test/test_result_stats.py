@@ -19,6 +19,7 @@
 __author__ = 'slamm@google.com (Stephen Lamm)'
 
 import logging
+import random
 import unittest
 
 from google.appengine.api import memcache
@@ -108,10 +109,30 @@ class CategoryBrowserManagerTest(unittest.TestCase):
 
   def testSortBrowsers(self):
     cls = result_stats.CategoryBrowserManager
-    browsers = ['iPhone 1.1', 'Safari 5.0', 'Firefox 3.5', 'Firefox 3.0']
+    expected_browsers = [
+        'Firefox',
+        'Firefox 3',
+        'Firefox 3.0a3pre',
+        'Firefox 3.0b5',
+        'Firefox 3.0pre',
+        'Firefox 3.0',
+        'Firefox 3.0.1',
+        'Firefox 3.4',
+        'Firefox 3.4.1',
+        'Firefox 3.5a1pre',
+        'Firefox 3.5a4',
+        'Firefox 3.5',
+        'Firefox 3.5.1a3',
+        'Firefox 3.5.1',
+        'Firefox 3.5.2',
+        'iPhone 1.1',
+        'Safari 5.0',
+        ]
+    browsers = expected_browsers[:]
+    random.seed(5)
+    random.shuffle(browsers)
     cls.SortBrowsers(browsers)
-    self.assertEqual(['Firefox 3.0', 'Firefox 3.5', 'iPhone 1.1', 'Safari 5.0'],
-                     browsers)
+    self.assertEqual(expected_browsers, browsers)
 
   def testInsortBrowser(self):
     cls = result_stats.CategoryBrowserManager
@@ -119,7 +140,6 @@ class CategoryBrowserManagerTest(unittest.TestCase):
     cls.InsortBrowser(browsers, 'iPhone 1.1')
     self.assertEqual(['Firefox 3.0', 'Firefox 3.5', 'iPhone 1.1', 'Safari 5.0'],
                      browsers)
-
 
 class CategoryStatsManagerTest(unittest.TestCase):
 

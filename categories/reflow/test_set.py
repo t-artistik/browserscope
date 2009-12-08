@@ -147,7 +147,7 @@ class ReflowTestSet(test_set_base.TestSet):
     # original score's milliseconds value.
     for result in results.values():
       result['expando'] = result['raw_score']
-      result['score'] = int(100.0 * result['raw_score'] / baseline_score)
+      result['raw_score'] = int(100.0 * result['raw_score'] / baseline_score)
     return results
 
   def GetTestScoreAndDisplayValue(self, test_key, raw_scores):

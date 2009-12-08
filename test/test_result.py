@@ -35,8 +35,8 @@ class MockTestSetWithAdjustResults(mock_data.MockTestSet):
   def AdjustResults(self, results):
     for values in results.values():
       # Add the raw value to be expando'd and store a munged value in score.
-      values['expando'] = values['score']
-      values['score'] = int(round(values['score'] / 2.0))
+      values['expando'] = values['raw_score']
+      values['raw_score'] = int(round(values['raw_score'] / 2.0))
     return results
 
 

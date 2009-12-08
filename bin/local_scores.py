@@ -56,7 +56,7 @@ SCORE_SQL = """
 CREATE_TEMP_SCORES_SQL = """
     CREATE TEMPORARY TABLE temp_scores (
       category VARCHAR(12),
-      test VARCHAR(32),
+      test VARCHAR(50),
       family VARCHAR(32),
       v1 VARCHAR(6),
       v2 VARCHAR(6),
@@ -74,6 +74,10 @@ CREATE_TEMP_SCORES_SQL = """
     FROM result_time
     LEFT JOIN result_parent USING (result_parent_key)
     LEFT JOIN user_agent USING (user_agent_key)
+    ;"""
+
+TEMP_CATEGORY_COUNTS_SQL = """
+    SELECT category, count(*) FROM temp_scores GROUP BY category
     ;"""
 
 TEMP_SCORES_SQL = """
@@ -104,10 +108,14 @@ def pretty_print(family, v1=None, v2=None, v3=None):
 def DumpScores(db):
   cursor = db.cursor()
   cursor.execute(CREATE_TEMP_SCORES_SQL)
+  cursor.execute(TEMP_CATEGORY_COUNTS_SQL)
+  for category, count in cursor.fetchall():
+    logging.info("Num scores for category, %s: %s", category, count)
   cursor.execute(BROWSERS_SQL)
   browser_parts = cursor.fetchall()
   for test_set in all_test_sets.GetTestSets():
     category = test_set.category
+    logging.info("Dump scores for category: %s", category)
     for family, v1, v2, v3 in browser_parts:
       v_clauses = ''
       for column, value in (('v1', v1), ('v2', v2), ('v3', v3)):
@@ -147,14 +155,13 @@ def DumpScores(db):
       if max_num_scores > 0:
         print '%s,"%s",%s,%s' % (category, pretty_print(family, v1, v2, v3),
                               ','.join(map(str, medians)), max_num_scores)
-    break
 
 
 def ParseArgs(argv):
   options, args = getopt.getopt(
       argv[1:],
-      'h:u:p:f:',
-      ['host=', 'gae_user=', 'params=', 'mysql_default_file='])
+      'h:e:p:f:',
+      ['host=', 'email=', 'params=', 'mysql_default_file='])
   host = None
   gae_user = None
   params = None
@@ -162,7 +169,7 @@ def ParseArgs(argv):
   for option_key, option_value in options:
     if option_key in ('-h', '--host'):
       host = option_value
-    elif option_key in ('-u', '--gae_user'):
+    elif option_key in ('-e', '--email'):
       gae_user = option_value
     elif option_key in ('-p', '--params'):
       params = option_value

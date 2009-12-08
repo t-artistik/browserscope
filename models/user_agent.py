@@ -301,10 +301,7 @@ class UserAgent(db.Expando):
         v1 = None
       elif version_bits:
         v2 = version_bits.pop(0)
-        if not v2.isdigit():
-          nondigit_index = min(i for i, c in enumerate(v2) if not c.isdigit())
-          v2, v3 = v2[:nondigit_index], v2[nondigit_index:]
-        elif version_bits:
+        if version_bits:
           v3 = version_bits.pop(0)
     return family, v1, v2, v3
 
