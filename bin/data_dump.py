@@ -56,6 +56,10 @@ from third_party.appengine_tools import appengine_rpc
 
 RESTART_OVERLAP_MINUTES=15
 CREATE_TABLES_SQL = (
+    """CREATE TABLE IF NOT EXISTS result_parent_key (
+      result_parent_key VARCHAR(100) NOT NULL PRIMARY KEY
+    ) ENGINE=MyISAM DEFAULT CHARACTER SET utf8 COLLATE utf8_bin
+    ;""",
     """CREATE TABLE IF NOT EXISTS result_parent (
       result_parent_key VARCHAR(100) NOT NULL PRIMARY KEY,
       category VARCHAR(100),
@@ -65,14 +69,14 @@ CREATE_TABLES_SQL = (
       created DATETIME,
       params_str VARCHAR(1024),
       loader_id INT(10)
-    ) ENGINE=MyISAM DEFAULT CHARSET=utf8
+    ) ENGINE=MyISAM DEFAULT CHARACTER SET utf8 COLLATE utf8_bin
     ;""",
     """CREATE TABLE IF NOT EXISTS result_time (
       result_time_key VARCHAR(100) NOT NULL PRIMARY KEY,
       result_parent_key VARCHAR(100) NOT NULL,
       test VARCHAR(50) NOT NULL,
       score INT(10) NOT NULL
-    ) ENGINE=MyISAM DEFAULT CHARSET=utf8
+    ) ENGINE=MyISAM DEFAULT CHARACTER SET utf8 COLLATE utf8_bin
     ;""",
     """CREATE TABLE IF NOT EXISTS user_agent (
       user_agent_key VARCHAR(100) NOT NULL PRIMARY KEY,
@@ -84,7 +88,7 @@ CREATE_TABLES_SQL = (
       confirmed INT(2),
       created DATETIME,
       js_user_agent_string TEXT
-    ) ENGINE=MyISAM DEFAULT CHARSET=utf8
+    ) ENGINE=MyISAM DEFAULT CHARACTER SET utf8 COLLATE utf8_bin
     ;""",
     """CREATE TABLE IF NOT EXISTS scores (
       result_parent_key VARCHAR(100),
@@ -104,12 +108,14 @@ CREATE_TABLES_SQL = (
       INDEX (category, test, family, v1, v2, v3),
       INDEX (user_agent_key),
       INDEX (result_parent_key)
-    ) ENGINE=MyISAM DEFAULT CHARSET=utf8
+    ) ENGINE=MyISAM DEFAULT CHARACTER SET utf8 COLLATE utf8_bin
     ;""",
     )
 
 
 INSERT_SQL = {
+    'result_parent_key': """INSERT IGNORE result_parent_key SET
+        result_parent_key=%s;""",
     'ResultParent': """REPLACE result_parent SET
         result_parent_key=%(result_parent_key)s,
         category=%(category)s,
@@ -137,7 +143,7 @@ INSERT_SQL = {
     }
 
 UPDATE_SCORES = """
-    REPLACE scores
+    INSERT IGNORE scores
     SELECT
       result_parent_key,
       result_time_key,
@@ -164,14 +170,10 @@ MAX_CREATED_SQL = {
     'UserAgent': 'SELECT MAX(created) FROM user_agent',
     }
 
-
-
 class DataDumpRpcServer(object):
-  PATH = '/admin/data_dump'
 
   def __init__(self, host, user):
     self.user = user
-    self.path = self.PATH
     self.host = host
     self.rpc_server = appengine_rpc.HttpRpcServer(
         self.host, self.GetCredentials, user_agent=None, source='',
@@ -181,78 +183,153 @@ class DataDumpRpcServer(object):
     # TODO: Grab email/password from config
     return self.user, getpass.getpass('Password for %s: ' % self.user)
 
-  def Send(self, **kwds):
+  def Send(self, path, params):
     # Drop parameters with value=None. Otherwise, the string 'None' gets sent.
-    rpc_params = dict((key, value)
-                      for key, value in kwds.items() if value is not None)
-
+    rpc_params = dict((str(k), v) for k, v in params.items() if v is not None)
     logging.info(
-        'http://%s%s%s', self.host, self.path, rpc_params and '?%s' % '&'.join(
+        'http://%s%s%s', self.host, path, rpc_params and '?%s' % '&'.join(
         ['%s=%s' % (k, v) for k, v in sorted(rpc_params.items())]) or '')
     # "payload=None" forces a GET request instead of a POST (default).
-    response_data = self.rpc_server.Send(self.path, payload=None, **rpc_params)
-    return simplejson.loads(response_data)
+    response_data = self.rpc_server.Send(path, payload=None, **rpc_params)
+    if response_data.startswith('bailing'):
+      logging.fatal(response_data)
+      raise RuntimeError
+    else:
+      return simplejson.loads(response_data)
 
-  def Run(self, db, run_start, params_str):
-    params = {}
-    if params_str:
-      params = dict(y.split('=', 1) for y in params_str.split('&'))
-    # Create tables
+  def GetKeys(self, model, max_created=None):
+    """Yield a list of keys for the given model."""
+    params = {
+        'count': 0,
+        'model': model,
+        }
+    if max_created:
+      params['created'] = max_created - datetime.timedelta(
+          minutes=RESTART_OVERLAP_MINUTES)
+    while 1:
+      params = self.Send('/admin/data_dump_keys', params)
+      yield params['keys']
+      del params['keys']
+      if params['bookmark'] is None:
+        break
+
+  def DumpEntities(self, db, model, keys):
+    logging.info('DumpEntities: model=%s, num_entities=%s', model, len(keys))
+    cursor = db.cursor()
+    index = 0
+    needed_keys = set(keys)
+    while needed_keys:
+      logging.info('DumpEntities: model=%s, num_needed=%s', model, len(needed_keys))
+      next_keys = []
+      for i, key in enumerate(needed_keys):
+        next_keys.append(key)
+        if i == 100:
+          break
+      key_prefix = os.path.commonprefix(next_keys)
+      prefix_len = len(key_prefix)
+      params = {
+          'model': model,
+          'key_prefix': key_prefix,
+          'keys': ','.join([key[prefix_len:] for key in next_keys]),
+          }
+      start = datetime.datetime.now()
+      params = self.Send('/admin/data_dump', params)
+      logging.info('request_time=%s', str(datetime.datetime.now() - start)[:-7])
+
+      for row in params['data']:
+        if 'lost_key' in row:
+          logging.info('Skipping unfound key: %s, model=%s',
+                       row['lost_key'], row['model_class'])
+          needed_keys.discard(row['lost_key'])
+        else:
+          cursor.execute(INSERT_SQL[row['model_class']], row)
+          if 'result_parent_key' in row:
+            needed_keys.discard(row['result_parent_key'])
+          elif 'user_agent_key' in row:
+            needed_keys.discard(row['user_agent_key'])
+      del params['data']
+
+  def NeededResultParentKeys(self, db):
+    cursor = db.cursor()
+    cursor.execute("""
+        SELECT result_parent_key.result_parent_key
+            FROM result_parent_key
+            LEFT JOIN result_parent USING(result_parent_key)
+            WHERE result_parent.result_parent_key IS NULL
+            ORDER BY result_parent_key.result_parent_key;""")
+    return [row[0] for row in cursor.fetchall()]
+
+  def NeededUserAgentKeys(self, db):
+    cursor = db.cursor()
+    cursor.execute("""
+        SELECT result_parent.user_agent_key
+        FROM result_parent
+        LEFT JOIN user_agent USING(user_agent_key)
+        WHERE user_agent.user_agent_key IS NULL
+        GROUP BY result_parent.user_agent_key
+        ORDER BY result_parent.user_agent_key;""")
+    return [row[0] for row in cursor.fetchall()]
+
+  def UpdateResultParentKeys(self, db):
+    cursor = db.cursor()
+    cursor.execute(MAX_CREATED_SQL['ResultParent'])
+    max_created = cursor.fetchone()[0]
+    for keys in self.GetKeys('ResultParent', max_created):
+      cursor.executemany(INSERT_SQL['result_parent_key'], keys)
+
+
+  def CreateTables(self, db):
     cursor = db.cursor()
     for create_sql in CREATE_TABLES_SQL:
       cursor.execute(create_sql)
-    for model in ('ResultParent', 'UserAgent'):
-      cursor.execute(MAX_CREATED_SQL[model])
-      max_created = cursor.fetchone()[0]
-      if max_created:
-        params['created'] = max_created - datetime.timedelta(
-            minutes=RESTART_OVERLAP_MINUTES)
-      params['model'] = model
-      elapsed_time = datetime.timedelta()
-      request_time = datetime.timedelta()
-      while not params.get('is_done', False):
-        logging.info('elapsed=%s, request=%s',
-                     str(elapsed_time)[:-7], str(request_time)[:-7])
-        request_start = datetime.datetime.now()
-        params = self.Send(**dict((str(x), y) for x, y in params.items()))
-        elapsed_time = datetime.datetime.now() - run_start
-        request_time = datetime.datetime.now() - request_start
-        for row in params['data']:
-          cursor.execute(INSERT_SQL[row['model_class']], row)
-        del params['data']
-        if params['bookmark'] is None:
-          break
-    logging.info('Update "scores" table.')
-    cursor.execute(UPDATE_SCORES)
 
+  def Run(self, db, run_start):
+    self.CreateTables(db)
+
+    needed_result_parent_keys = self.NeededResultParentKeys(db)
+    if not needed_result_parent_keys:
+      self.UpdateResultParentKeys(db)
+      needed_result_parent_keys = self.NeededResultParentKeys(db)
+
+    is_score_updated_needed = False
+    if needed_result_parent_keys:
+      self.DumpEntities(db, 'ResultParent', needed_result_parent_keys)
+      is_score_updated_needed = True
+
+    needed_user_agent_keys = self.NeededUserAgentKeys(db)
+    if needed_user_agent_keys:
+      self.DumpEntities(db, 'UserAgent', needed_user_agent_keys)
+      is_score_updated_needed = True
+
+    if is_score_updated_needed:
+      logging.info('Update "scores" table.')
+      cursor = db.cursor()
+      cursor.execute(UPDATE_SCORES)
 
 
 def ParseArgs(argv):
   options, args = getopt.getopt(
       argv[1:],
       'h:e:p:f:',
-      ['host=', 'email=', 'params=', 'mysql_default_file='])
+      ['host=', 'email=', 'mysql_default_file='])
   host = None
   gae_user = None
-  params = None
   mysql_default_file = None
   for option_key, option_value in options:
     if option_key in ('-h', '--host'):
       host = option_value
     elif option_key in ('-e', '--email'):
       gae_user = option_value
-    elif option_key in ('-p', '--params'):
-      params = option_value
     elif option_key in ('-f', '--mysql_default_file'):
       mysql_default_file = option_value
-  return host, gae_user, params, mysql_default_file, args
+  return host, gae_user, mysql_default_file, args
 
 
 def main(argv):
-  host, user, params, mysql_default_file, argv = ParseArgs(argv)
+  host, user, mysql_default_file, argv = ParseArgs(argv)
   start = datetime.datetime.now()
   db = MySQLdb.connect(read_default_file=mysql_default_file)
-  DataDumpRpcServer(host, user).Run(db, start, params)
+  DataDumpRpcServer(host, user).Run(db, start)
   end = datetime.datetime.now()
   print '  start: %s' % start
   print '    end: %s' % end
@@ -260,5 +337,10 @@ def main(argv):
 
 
 if __name__ == '__main__':
-  logging.basicConfig(level=logging.INFO)
+  logging.basicConfig(level=logging.INFO,
+                      filename='/tmp/data_dump.log',
+                      filemode='w')
+  console = logging.StreamHandler()
+  console.setLevel(logging.INFO)
+  logging.getLogger('').addHandler(console)
   main(sys.argv)

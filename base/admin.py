@@ -164,19 +164,20 @@ def WTF(request):
   else:
     return http.HttpResponse('No user_agent with this key.')
 
+@decorators.admin_required
 def DataDump(request):
-  logging.info('DataDump')
-  bookmark = request.GET.get('bookmark')
-  created = request.GET.get('created')
-  if created:
-    created = datetime.datetime.strptime(created, '%Y-%m-%d %H:%M:%S')
-  if bookmark and created:
-    return http.HttpResponseBadRequest(
-        'Both "bookark" and "created" set. Should only set one or neither.')
-  fetch_limit = int(request.GET.get('fetch_limit', 100))
+  """This is used by bin/data_dump.py to replicate the datastore."""
+  model = request.GET.get('model')
+  key_prefix = request.GET.get('key_prefix', '')
+  keys_list = request.GET.get('keys')
   time_limit = int(request.GET.get('time_limit', 3))
+
+  if keys_list:
+    keys = ['%s%s' % (key_prefix, key) for key in keys_list.split(',')]
+  else:
+    return http.HttpResponseBadRequest('"keys" is a required parameter.')
+
   start_time = datetime.datetime.now()
-  model = request.GET.get('model') # 'ResultParent', 'UserAgent'
 
   if model == 'ResultParent':
     query = pager.PagerQuery(ResultParent, keys_only=True)
@@ -185,49 +186,38 @@ def DataDump(request):
   else:
     return http.HttpResponseBadRequest(
         'model must be one of "ResultParent", "UserAgent".')
-  if created:
-    query.filter('created >=', created)
-  query.order('created')
-  logging.info('DataDump: fetch')
   try:
-    prev_bookmark, results, next_bookmark = query.fetch(fetch_limit, bookmark)
-  except db.Timeout:
-    logging.warn('db.Timeout during initial fetch.')
-    return http.HttpResponseServerError('db.Timeout during initial fetch.')
-  logging.info('DataDump: results, len=%s', len(results))
-
-  try:
+    data = []
+    error = None
     if model == 'ResultParent':
-      data = []
       result_time_query = ResultTime.gql('WHERE ANCESTOR IS :1')
-      last_result_parent_key = None
-      for result_parent_key in results:
+      for result_parent_key in keys:
         if (datetime.datetime.now() - start_time).seconds > time_limit:
-          if last_result_parent_key:
-            # There is more to process, but we have run out of time.
-            next_bookmark = query.get_bookmark(last_result_parent_key)
-          else:
-            next_bookmark = bookmark
+          error = 'Over time limit'
+          break
         try:
           p = ResultParent.get(result_parent_key)
-          user_agent_key = str(
-              ResultParent.user_agent.get_value_for_datastore(p))
-          result_time_query.bind(result_parent_key)
+        except db.Timeout:
+          error = 'db.Timeout: ResultParent'
+          break
+        if not p:
+          data.append({
+            'model_class': 'ResultParent',
+            'lost_key': result_parent_key,
+            })
+          continue
+        result_time_query.bind(p.key())
+        try:
           result_times = result_time_query.fetch(1000)
         except db.Timeout:
-          # Try again in another request
-          if last_result_parent_key:
-            next_bookmark = query.get_bookmark(last_result_parent_key)
-          else:
-            next_bookmark = bookmark
+          error = 'db.Timeout: ResultTime'
           break
-        last_result_parent_key = result_parent_key
-
         data.append({
             'model_class': 'ResultParent',
-            'result_parent_key': str(result_parent_key),
+            'result_parent_key': result_parent_key,
             'category': p.category,
-            'user_agent_key': user_agent_key,
+            'user_agent_key': str(
+                ResultParent.user_agent.get_value_for_datastore(p)),
             'ip': p.ip,
             'user_id': p.user and p.user.user_id() or None,
             'created': p.created and p.created.isoformat() or None,
@@ -243,31 +233,79 @@ def DataDump(request):
               'score': result_time.score,
               })
     elif model == 'UserAgent':
-      data = [{
-          'model_class': 'UserAgent',
-          'user_agent_key': str(ua.key()),
-          'string': ua.string,
-          'family': ua.family,
-          'v1': ua.v1,
-          'v2': ua.v2,
-          'v3': ua.v3,
-          'confirmed': ua.confirmed,
-          'created': ua.created and ua.created.isoformat() or None,
-          'js_user_agent_string': (hasattr(ua, 'js_user_agent_string') and
-                                   ua.js_user_agent_string or None),
-          } for ua in results]
+      try:
+        user_agents = UserAgent.get(keys)
+      except db.Timeout:
+        error = 'db.Timeout: UserAgent'
+      else:
+        for key, ua in zip(keys, user_agents):
+          if ua:
+            data.append({
+                'model_class': 'UserAgent',
+                'user_agent_key': key,
+                'string': ua.string,
+                'family': ua.family,
+                'v1': ua.v1,
+                'v2': ua.v2,
+                'v3': ua.v3,
+                'confirmed': ua.confirmed,
+                'created': ua.created and ua.created.isoformat() or None,
+                'js_user_agent_string': (hasattr(ua, 'js_user_agent_string') and
+                                         ua.js_user_agent_string or None),
+                })
+          else:
+            data.append({
+                'model_class': 'UserAgent',
+                'lost_key': key,
+                })
     response_params = {
-        'bookmark': next_bookmark,
-        'fetch_limit': fetch_limit,
-        'time_limit': time_limit,
         'data': data,
-        'model': model,
         }
+    if error:
+      response_params['error'] = error
   except Exception:
     import traceback
     error = traceback.format_exc()
     logging.info("Uh-oh: %s", error)
     return http.HttpResponse('bailing: %s' % error)
   logging.info('DataDump: data=%s', response_params)
+  return http.HttpResponse(content=simplejson.dumps(response_params),
+                           content_type='application/json')
+
+
+@decorators.admin_required
+def DataDumpKeys(request):
+  """This is used by bin/data_dump.py to get ResultParent keys."""
+  bookmark = request.GET.get('bookmark')
+  model_name = request.GET.get('model')
+  count = int(request.GET.get('count', 0))
+  fetch_limit = int(request.GET.get('fetch_limit', 999))
+  created_str = request.GET.get('created', 0)
+  created = None
+  if created_str:
+    created = datetime.datetime.strptime(created_str, '%Y-%m-%d %H:%M:%S')
+  models = {
+      'UserAgent': UserAgent,
+      'ResultParent': ResultParent,
+      'ResultTime': ResultTime,
+      }
+  model = models.get(model_name, UserAgent)
+  query = pager.PagerQuery(model, keys_only=True)
+  if created:
+    query.filter('created >=', created)
+    query.order('created')
+  try:
+    prev_bookmark, results, next_bookmark = query.fetch(fetch_limit, bookmark)
+  except db.Timeout:
+    logging.warn('db.Timeout during initial fetch.')
+    return http.HttpResponseServerError('db.Timeout during initial fetch.')
+  response_params = {
+      'bookmark': next_bookmark,
+      'model': model_name,
+      'count': count + len(results),
+      'keys': [str(key) for key in results]
+      }
+  if created_str:
+    response_params['created'] = created_str
   return http.HttpResponse(content=simplejson.dumps(response_params),
                            content_type='application/json')

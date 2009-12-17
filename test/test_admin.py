@@ -74,61 +74,157 @@ class TestDataDump(unittest.TestCase):
     db.delete(ResultParent.all(keys_only=True).fetch(1000))
     db.delete(ResultTime.all(keys_only=True).fetch(1000))
     db.delete(UserAgent.all(keys_only=True).fetch(1000))
-#    db.delete(UserAgentGroup.all(keys_only=True).fetch(1000))
 
   def testNoParamsGivesError(self):
     params = {}
     response = self.client.get('/admin/data_dump', params)
     self.assertEqual(400, response.status_code)
 
-  def testBookmarkAndCreatedGivesError(self):
-    params = {'bookmark': 'foo', 'created': '2009-09-09 09:09:09'}
+  def testNoModelGivesError(self):
+    params = {'keys': 'car,home,heart'}
     response = self.client.get('/admin/data_dump', params)
     self.assertEqual(400, response.status_code)
 
-  def testNoBookmarkOrCreatedResultParent(self):
+  def testNonExistentKeyIsMarkedLost(self):
+    for model in ('ResultParent', 'UserAgent'):
+      params = {
+          'keys': 'agt1YS1wcm9maWxlcnIRCxIJVXNlckFnZW50GN6JIgw',
+          'model': model}
+      response = self.client.get('/admin/data_dump', params)
+      self.assertEqual(200, response.status_code)
+      response_params = simplejson.loads(response.content)
+      expected_data = [{
+          'model_class': model,
+          'lost_key': 'agt1YS1wcm9maWxlcnIRCxIJVXNlckFnZW50GN6JIgw',
+          }]
+      self.assertEqual(expected_data, response_params['data'])
+
+  def testDumpAll(self):
     test_set = mock_data.MockTestSet()
+    keys = []
     for scores in ((1, 4, 50), (1, 1, 20), (0, 2, 30), (1, 0, 10), (1, 3, 10)):
       result = ResultParent.AddResult(
           test_set, '1.2.2.5', mock_data.GetUserAgentString(),
           'apple=%s,banana=%s,coconut=%s' % scores)
-    params = {'model': 'ResultParent'}
+      keys.append(str(result.key()))
+    params = {
+        'model': 'ResultParent',
+        'keys': ','.join(keys),
+        }
     response = self.client.get('/admin/data_dump', params)
     self.assertEqual(200, response.status_code)
     response_params = simplejson.loads(response.content)
-    self.assertEqual(None, response_params['bookmark'])
     self.assertEqual(20, len(response_params['data'])) # 5 parents + 15 times
 
-  def testNoBookmarkOrCreatedUserAgent(self):
-    test_set = mock_data.MockTestSet()
-    for scores in ((0, 10, 100), (1, 20, 200)):
-      result = ResultParent.AddResult(
-          test_set, '1.2.2.5', mock_data.GetUserAgentString(),
-          'apple=%s,banana=%s,coconut=%s' % scores)
-    params = {'model': 'UserAgent'}
-    response = self.client.get('/admin/data_dump', params)
-    self.assertEqual(200, response.status_code)
-    response_params = simplejson.loads(response.content)
-    self.assertEqual(None, response_params['bookmark'])
-    self.assertEqual(1, len(response_params['data']))
-    self.assertEqual('Firefox', response_params['data'][0]['family'])
+
+class TestDataDumpKeys(unittest.TestCase):
+  def setUp(self):
+    self.client = Client()
+
+  def tearDown(self):
+    db.delete(ResultParent.all(keys_only=True).fetch(1000))
+    db.delete(ResultTime.all(keys_only=True).fetch(1000))
+    db.delete(UserAgent.all(keys_only=True).fetch(1000))
 
   def testCreated(self):
     test_set = mock_data.MockTestSet()
     created_base = datetime.datetime(2009, 9, 9, 9, 9, 0)
+    keys = []
     for scores in ((0, 10, 100), (1, 20, 200)):
       ip = '1.2.2.%s' % scores[1]
       result = ResultParent.AddResult(
           test_set, ip, mock_data.GetUserAgentString(),
           'apple=%s,banana=%s,coconut=%s' % scores,
           created=created_base + datetime.timedelta(seconds=scores[1]))
+      keys.append(str(result.key()))
     params = {
           'model': 'ResultParent',
           'created': created_base + datetime.timedelta(seconds=15),
           }
-    response = self.client.get('/admin/data_dump', params)
+    response = self.client.get('/admin/data_dump_keys', params)
     self.assertEqual(200, response.status_code)
     response_params = simplejson.loads(response.content)
     self.assertEqual(None, response_params['bookmark'])
-    self.assertEqual(4, len(response_params['data']))  # parent + 3 times
-    self.assertEqual('1.2.2.20', response_params['data'][0]['ip'])
+    self.assertEqual(keys[1:], response_params['keys'])
+
+  def testBookmarkRestart(self):
+    test_set = mock_data.MockTestSet()
+    expected_keys = []
+    for scores in ((1, 4, 50), (1, 1, 20), (0, 2, 30), (1, 0, 10), (1, 3, 10)):
+      result = ResultParent.AddResult(
+          test_set, '1.2.2.5', mock_data.GetUserAgentString(),
+          'apple=%s,banana=%s,coconut=%s' % scores)
+      expected_keys.append(str(result.key()))
+    params = {
+        'model': 'ResultParent',
+        'fetch_limit': '3'
+        }
+    response = self.client.get('/admin/data_dump_keys', params)
+    keys = []
+    self.assertEqual(200, response.status_code)
+    response_params = simplejson.loads(response.content)
+    self.assertNotEqual(None, response_params['bookmark'])
+    keys.extend(response_params['keys'])
+    self.assertEqual(3, len(keys))
+
+    del response_params['keys']
+    response = self.client.get('/admin/data_dump_keys', response_params)
+    self.assertEqual(200, response.status_code)
+    response_params = simplejson.loads(response.content)
+    self.assertEqual(None, response_params['bookmark'])
+    keys.extend(response_params['keys'])
+    self.assertEqual(sorted(expected_keys), sorted(keys))
+
+# class TestDataDumpWithMocks(unittest.TestCase):
+#   def setUp(self):
+#     self.client = Client()
+#     self.old_result_parent_get = ResultParent.get
+
+#   def tearDown(self):
+#     ResultParent.get = self.old_result_parent_get
+#     db.delete(ResultParent.all(keys_only=True).fetch(1000))
+#     db.delete(ResultTime.all(keys_only=True).fetch(1000))
+#     db.delete(UserAgent.all(keys_only=True).fetch(1000))
+
+#   def testResultParentKeyTimeout(self):
+#     test_set = mock_data.MockTestSet()
+#     keys = []
+#     for scores in ((1, 4, 50), (1, 1, 20), (0, 2, 30), (1, 0, 10), (1, 3, 10)):
+#       result = ResultParent.AddResult(
+#           test_set, '1.2.2.5', mock_data.GetUserAgentString(),
+#           'apple=%s,banana=%s,coconut=%s' % scores)
+#       keys.append(result.key())
+#     params = {
+#         'model': 'ResultParent',
+#         'fetch_limit': '4'
+#         }
+
+#     self.count = 0
+#     def ResultParentGet(cls, *args, **kwds):
+#       logging.info('args: %s, kwds: %s', args, kwds)
+#       self.count += 1
+#       if self.count == 5:
+#         raise db.Timeout
+#       else:
+#         return self.old_result_parent_get(*args, **kwds)
+#     ResultParent.get = classmethod(ResultParentGet)
+
+#     response = self.client.get('/admin/data_dump', params)
+#     self.assertEqual(200, response.status_code)
+#     response_params = simplejson.loads(response.content)
+#     self.assertNotEqual(None, response_params['bookmark'])
+#     self.assertEqual(12, len(response_params['data'])) # 3 parents + 9 times
+
+#     del response_params['data']
+#     response = self.client.get('/admin/data_dump', response_params)
+#     self.assertEqual(200, response.status_code)
+#     response_params = simplejson.loads(response.content)
+#     self.assertEqual(None, response_params['bookmark'])
+#     self.assertEqual(8, len(response_params['data'])) # 2 parent + 6 times
+
+  # Exceptions:
+  #   Timeouts
+  #   - ResultParent keys (first time, after bookmark)
+  #   - ResultParent entity
+  #   - ResultTime enitities
+  #   Past time_limit
