@@ -140,6 +140,8 @@ INSERT_SQL = {
         confirmed=%(confirmed)s,
         created=%(created)s,
         js_user_agent_string=%(js_user_agent_string)s;""",
+    'lost-UserAgent': """REPLACE user_agent SET
+        user_agent_key=%s;"""
     }
 
 UPDATE_SCORES = """
@@ -238,9 +240,13 @@ class DataDumpRpcServer(object):
 
       for row in params['data']:
         if 'lost_key' in row:
+          lost_key = row['lost_key']
+          lost_model = row['model_class']
           logging.info('Skipping unfound key: %s, model=%s',
-                       row['lost_key'], row['model_class'])
-          needed_keys.discard(row['lost_key'])
+                       lost_key, lost_model)
+          needed_keys.discard(lost_key)
+          if lost_model == 'UserAgent':
+            cursor.execute(INSERT_SQL['lost-UserAgent'], lost_key)
         else:
           cursor.execute(INSERT_SQL[row['model_class']], row)
           if 'result_parent_key' in row:
