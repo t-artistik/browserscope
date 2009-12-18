@@ -214,6 +214,7 @@ def BuildRankers(db):
       SELECT category, test, family, v1, v2, v3, score
       FROM scores
       WHERE category IS NOT NULL
+      ORDER by category, test, family, v1, v2, v3
       ;''')
   last_category = None
   last_test_key = None
@@ -225,8 +226,7 @@ def BuildRankers(db):
         last_category = category
       test = test_set.GetTest(test_key)
       if test is None:
-        logging.warn('Test is None: %s, %s, %s, %s %s %s %s',
-                     category, test_key, family, v1, v2, v3, score)
+        logging.warn('No test in category: %s, %s', category, test_key)
         continue
       last_test_key = test_key
     parts = family, v1, v2, v3
@@ -235,6 +235,27 @@ def BuildRankers(db):
     for browser in browsers:
       ranker = GetRanker(test, browser)
       ranker.Add(score)
+
+def CheckTests(db):
+  cursor = db.cursor()
+  cursor.execute('''
+      SELECT category, test, count(*)
+      FROM scores
+      WHERE category IS NOT NULL
+      GROUP BY category, test
+      ORDER BY category, test
+      ;''')
+
+  for category, test_key, num_scores in cursor.fetchall():
+    test_set = all_test_sets.GetTestSet(category)
+    if not test_set:
+      logging.warn('No test_set for category: %s (num_scores=%s)',
+                   category, num_scores)
+      continue
+    test = test_set.GetTest(test_key)
+    if not test:
+      logging.warn('No test: %s, %s (num_scores=%s)',
+                   category, test_key, num_scores)
 
 
 def DumpScores(db):
@@ -315,8 +336,9 @@ def main(argv):
   start = datetime.datetime.now()
   db = MySQLdb.connect(read_default_file=mysql_default_file)
   #DumpScores(db)
-  BuildRankers(db)
-  DumpRankers(sys.stdout)
+  #BuildRankers(db)
+  #DumpRankers(sys.stdout)
+  CheckTests(db)
   end = datetime.datetime.now()
   print '  start: %s' % start
   print '    end: %s' % end
