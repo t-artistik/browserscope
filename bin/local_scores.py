@@ -22,6 +22,7 @@ Compare local numbers with online numbers.
 # Each level
 # Each test_set
 
+import bisect
 import datetime
 import getopt
 import logging
@@ -53,36 +54,13 @@ SCORE_SQL = """
       %(limit_clause)s
     ;"""
 
-CREATE_TEMP_SCORES_SQL = """
-    CREATE TEMPORARY TABLE temp_scores (
-      category VARCHAR(12),
-      test VARCHAR(50),
-      family VARCHAR(32),
-      v1 VARCHAR(6),
-      v2 VARCHAR(6),
-      v3 VARCHAR(9),
-      created DATETIME,
-      score INT,
-      INDEX (category, test, family, v1, v2, v3)
-    ) ENGINE=MyISAM DEFAULT CHARSET=utf8
-    SELECT
-      category, test,
-      family, v1, v2, v3, string,
-      result_parent.created as result_parent_created,
-      user_agent.created as user_agent_created,
-      score
-    FROM result_time
-    LEFT JOIN result_parent USING (result_parent_key)
-    LEFT JOIN user_agent USING (user_agent_key)
+CATEGORY_COUNTS_SQL = """
+    SELECT category, count(*) FROM scores GROUP BY category
     ;"""
 
-TEMP_CATEGORY_COUNTS_SQL = """
-    SELECT category, count(*) FROM temp_scores GROUP BY category
-    ;"""
-
-TEMP_SCORES_SQL = """
+SCORES_SQL = """
     SELECT %(columns)s
-    FROM temp_scores
+    FROM scores
     WHERE
       category = %%(category)s AND
       test = %%(test)s AND
@@ -91,18 +69,172 @@ TEMP_SCORES_SQL = """
       %(limit_clause)s
     ;"""
 
-def pretty_print(family, v1=None, v2=None, v3=None):
-  """Pretty browser string."""
-  if v3:
-    if v3[0].isdigit():
-      return '%s %s.%s.%s' % (family, v1, v2, v3)
+
+class UserAgent(object):
+  @staticmethod
+  def pretty_print(family, v1=None, v2=None, v3=None):
+    """Pretty browser string."""
+    if v3:
+      if v3[0].isdigit():
+        return '%s %s.%s.%s' % (family, v1, v2, v3)
+      else:
+        return '%s %s.%s%s' % (family, v1, v2, v3)
+    elif v2:
+      return '%s %s.%s' % (family, v1, v2)
+    elif v1:
+      return '%s %s' % (family, v1)
+    return family
+
+
+  @classmethod
+  def parts_to_string_list(cls, family, v1=None, v2=None, v3=None):
+    """Return a list of user agent version strings.
+
+    e.g. ['Firefox', 'Firefox 3', 'Firefox 3.5']
+    """
+    key = family, v1, v2, v3
+    string_list = []
+    if family:
+      string_list.append(family)
+      if v1:
+        string_list.append(cls.pretty_print(family, v1))
+        if v2:
+          string_list.append(cls.pretty_print(family, v1, v2))
+          if v3:
+            string_list.append(cls.pretty_print(family, v1, v2, v3))
+    return string_list
+
+
+class LastNRanker(object):
+  MAX_NUM_SAMPLED_SCORES = 100
+
+  def __init__(self):
+    self.num_scores = 0
+    self.scores = []
+
+  def GetMedianAndNumScores(self):
+    """Return the median of the last N scores."""
+    num_sampled_scores = len(self.scores)
+    if num_sampled_scores:
+      return self.scores[num_sampled_scores / 2], self.num_scores
     else:
-      return '%s %s.%s%s' % (family, v1, v2, v3)
-  elif v2:
-    return '%s %s.%s' % (family, v1, v2)
-  elif v1:
-    return '%s %s' % (family, v1)
-  return family
+      return None, 0
+
+  def Add(self, score):
+    """Add a score into the last N scores.
+
+    If needed, drops the score that is furthest away from the given score.
+    """
+    num_sampled_scores = len(self.scores)
+    if num_sampled_scores < self.MAX_NUM_SAMPLED_SCORES:
+      bisect.insort(self.scores, score)
+    else:
+      index_left = bisect.bisect_left(self.scores, score)
+      index_right = bisect.bisect_right(self.scores, score)
+      index_center = index_left + (index_right - index_left) / 2
+      self.scores.insert(index_left, score)
+      if index_center < num_sampled_scores / 2:
+        self.scores.pop()
+      else:
+        self.scores.pop(0)
+    self.num_scores += 1
+
+  def GetValues(self):
+    return self.scores
+
+
+class CountRanker(object):
+  """Maintain a list of score counts.
+
+  The minimum score is assumed to be 0.
+  The maximum score must be MAX_SCORE or less.
+  """
+  MIN_SCORE = 0
+  MAX_SCORE = 100
+
+  def __init__(self):
+    self.counts = []
+
+  def GetMedianAndNumScores(self):
+    median = None
+    num_scores = sum(self.counts)
+    median_rank = num_scores / 2
+    index = 0
+    for score, count in enumerate(self.counts):
+      median = score
+      index += count
+      if median_rank < index:
+        break
+    return median, num_scores
+
+  def Add(self, score):
+    if score < self.MIN_SCORE:
+      score = self.MIN_SCORE
+      logging.warn('CountRanker(key_name=%s) value out of range (%s to %s): %s',
+                   self.key().name(), self.MIN_SCORE, self.MAX_SCORE, score)
+    elif score > self.MAX_SCORE:
+      score = self.MAX_SCORE
+      logging.warn('CountRanker(key_name=%s) value out of range (%s to %s): %s',
+                   self.key().name(), self.MIN_SCORE, self.MAX_SCORE, score)
+    slots_needed = score - len(self.counts) + 1
+    if slots_needed > 0:
+      self.counts.extend([0] * slots_needed)
+    self.counts[score] += 1
+
+  def GetValues(self):
+    return self.counts
+
+
+rankers = {}
+def GetRanker(test, browser, params_str=None):
+  global rankers
+  key = test.test_set.category, test.key, browser, params_str
+  if not key in rankers:
+    if test.min_value >= 0 and test.max_value <= CountRanker.MAX_SCORE:
+      ranker = CountRanker()
+    else:
+      ranker = LastNRanker()
+    rankers[key] = ranker
+  return rankers[key]
+
+def DumpRankers(fh):
+  global rankers
+  for (category, test, browser, params_str), ranker in sorted(rankers.items()):
+    fields = [category, test, browser, params_str or 'None']
+    fields.append(ranker.__class__.__name__)
+    median, num_scores = ranker.GetMedianAndNumScores()
+    fields.append(str(median))
+    fields.append(str(num_scores))
+    fields.append('|'.join(map(str, ranker.GetValues())))
+    print >>fh, ','.join(fields)
+
+def BuildRankers(db):
+  cursor = db.cursor()
+  cursor.execute('''
+      SELECT category, test, family, v1, v2, v3, score
+      FROM scores
+      WHERE category IS NOT NULL
+      ;''')
+  last_category = None
+  last_test_key = None
+  last_parts = None
+  for category, test_key, family, v1, v2, v3, score in cursor.fetchall():
+    if test_key != last_test_key:
+      if category != last_category:
+        test_set = all_test_sets.GetTestSet(category)
+        last_category = category
+      test = test_set.GetTest(test_key)
+      if test is None:
+        logging.warn('Test is None: %s, %s, %s, %s %s %s %s',
+                     category, test_key, family, v1, v2, v3, score)
+        continue
+      last_test_key = test_key
+    parts = family, v1, v2, v3
+    if parts != last_parts:
+      browsers = UserAgent.parts_to_string_list(family, v1, v2, v3)
+    for browser in browsers:
+      ranker = GetRanker(test, browser)
+      ranker.Add(score)
 
 
 def DumpScores(db):
@@ -182,7 +314,9 @@ def main(argv):
   host, user, params, mysql_default_file, argv = ParseArgs(argv)
   start = datetime.datetime.now()
   db = MySQLdb.connect(read_default_file=mysql_default_file)
-  DumpScores(db)
+  #DumpScores(db)
+  BuildRankers(db)
+  DumpRankers(sys.stdout)
   end = datetime.datetime.now()
   print '  start: %s' % start
   print '    end: %s' % end
