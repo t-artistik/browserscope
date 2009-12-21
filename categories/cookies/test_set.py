@@ -57,42 +57,6 @@ class CookiesTest(test_set_base.TestBase):
         halt_tests_on_fail=halt_tests_on_fail)
 
 
-  def GetScoreAndDisplayValue(self, median, medians=None, is_uri_result=False):
-    """Custom scoring function.
-
-    Args:
-      median: The actual median for this test from all scores.
-      medians: A dict of the medians for all tests indexed by key.
-      is_uri_result: Boolean, if results are in the url, i.e. home page.
-    Returns:
-      (score, display)
-      Where score is a value between 1-100.
-      And display is the text for the cell.
-    """
-    #logging.info('Cookies.GetScoreAndDisplayValue '
-    #             'test: %s, median: %s, medians: %s' % (self.key, median, 
-    #             len(medians)))
-
-    #TODO(eric): change this method
-
-    score = 0
-    if 'hostconn' == self.key:
-      if median > 2:
-        score = 100
-      elif median == 2:
-        score = 50
-      else:
-        score = 0
-
-    elif 'maxconn' == self.key:
-      if median > 20:
-        score = 100
-      elif median >= 10:
-        score = 50
-      else:
-        score = 0
-    return score, str(median)
-
 
 """
 Initial list of tests to include, in no particular order:
@@ -152,6 +116,41 @@ that can be set and retrieved.''',
 
 
 class CookiesTestSet(test_set_base.TestSet):
+
+  def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
+    """Get a normalized score (1 to 10) and a value to output to the display.
+
+    Args:
+      test_key: a key for a test_set test.
+      raw_scores: a dict of raw_scores indexed by test keys.
+    Returns:
+      score, display_value
+          # score is from 1 to 10.
+          # display_value is the text for the cell.
+    """
+    #logging.info('Cookies.GetScoreAndDisplayValue '
+    #             'test: %s, median: %s, medians: %s' % (self.key, median, 
+    #             len(medians)))
+
+    #TODO(eric): change this method
+    median = raw_scores[test_key]
+    score = 0
+    if 'hostconn' == test_key:
+      if median > 2:
+        score = 10
+      elif median == 2:
+        score = 5
+      else:
+        score = 0
+
+    elif 'maxconn' == test_key:
+      if median > 20:
+        score = 10
+      elif median >= 10:
+        score = 5
+      else:
+        score = 0
+    return score, str(median)
 
   def GetRowScoreAndDisplayValue(self, results):
     """Get the overall score for this row of results data.

@@ -19,10 +19,9 @@
 __author__ = 'elsigh@google.com (Lindsey Simon)'
 
 
-from decimal import Decimal
-import logging
-
+from categories.jskb import ecmascript_snippets
 from categories import test_set_base
+import re
 
 
 _CATEGORY = 'jskb'
@@ -50,52 +49,59 @@ class JskbTest(test_set_base.TestBase):
         min_value=0,
         max_value=2200)
 
-  def GetScoreAndDisplayValue(self, median, medians=None, is_uri_result=False):
-    """Custom scoring function.
 
-    Args:
-      median: The actual median for this test from all scores.
-      medians: A dict of the medians for all tests indexed by key.
-      is_uri_result: Boolean, if results are in the url, i.e. home page.
-    Returns:
-      (score, display)
-      Where score is a value between 1-100.
-      And display is the text for the cell.
-    """
-    score = median
-    display = median
-    if self.key == 'passed':
-      if median >= 2100:
-        score = 95
-      elif median >= 2000:
-        score = 85
-      elif median >= 1950:
-        score = 75
-      elif median >= 1800:
-        score = 65
-      else:
-        score = 50
-    elif self.key == 'failed':
-      if median == 0:
-        score = 95
-      elif median <= 5:
-        score = 85
-      elif median <= 20:
-        score = 75
-      else:
-        score = 50
-    #logging.info('score %s, display %s' % (score, display))
-    return score, display
+def html(text):
+  return re.sub('<', '&lt;', re.sub('>', '&gt;', re.sub('&', '&amp;', text)))
 
+def new_test(test):
+  name = test['name']
+  code = '<pre>%s</pre>' % html(test['code'])
+  summary = test.get('summary', None)
+  doc = test.get('doc', None)
+  if summary is None:
+    summary = test['code']
+  elif doc is None:
+    doc = code
+  else:
+    doc = '%s\n%s' % (doc, code)
+  return JskbTest(name, summary, doc)
 
-_TESTS = (
-  # key, name, doc
-  #SelectorsTest('score', 'Score', 'Selectors API test score'),
-  JskbTest('navigator.userAgent', 'User Agent', 'What this test tests...'),
-)
+_TESTS = tuple([new_test(test) for test in ecmascript_snippets._SNIPPETS])
 
 
 class JskbTestSet(test_set_base.TestSet):
+
+  def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
+    """Get a normalized score (1 to 10) and a value to output to the display.
+
+    Args:
+      test_key: a key for a test_set test.
+      raw_scores: a dict of raw_scores indexed by test keys.
+    Returns:
+      score, display_value
+          # score is from 1 to 10.
+          # display_value is the text for the cell.
+    """
+    snippet = ecmascript_snippets.with_name(test_key)
+    median = raw_scores[test_key]
+    # TODO(mikesamuel): a confidence metric around the results.
+    int_median = int(round(median))
+
+    display = '?'
+    values = snippet[ecmascript_snippets.VALUES]
+    if int_median >= 0 and int_median < len(values):
+      display = values[int_median]
+
+    good = snippet.get(ecmascript_snippets.GOOD)
+    # TODO(mikesamuel): 3 scores chosen because of the pretty colors they make
+    if good is not None:
+      if display in good:
+        score = 10
+      else:
+        score = 5
+    else:
+      score = 7
+    return score, display
 
   def GetRowScoreAndDisplayValue(self, results):
     """Get the overall score for this row of results data.
@@ -112,9 +118,8 @@ class JskbTestSet(test_set_base.TestSet):
       Where score is a value between 1-100.
       And display is the text for the cell.
     """
-    #logging.info('%s GetRowScore, results:%s' % (self.category, results))
-    if (not results.has_key('passed') or results['passed']['median'] is None or
-        results['failed']['median'] is None):
+    if (not results.has_key('passed') or results['passed']['median']
+        or results['failed']['median'] is None):
       score = 0
       display = ''
     else:
@@ -122,22 +127,19 @@ class JskbTestSet(test_set_base.TestSet):
           (results['passed']['median'] + results['failed']['median'])))
 
       num = round(100.0 * results['passed']['median'] /
-                                    (results['passed']['median'] + results['failed']['median']),
-                                    1)
-      #logging.info('num: %s', num)
-      #percent = str(Decimal(str()))
+                  (results['passed']['median'] + results['failed']['median']),
+                  1)
       score = int(num)
       if score == 0:
         score = 10
         display = '0%'
       else:
         display = str(num) + '%'
-    #logging.info('Row score: %s' % score)
     return score, display
 
 TEST_SET = JskbTestSet(
     category=_CATEGORY,
-    category_name='JS Knowledge',
+    category_name='JSKB',
     tests=_TESTS,
     test_page='/%s/environment-checks' % _CATEGORY
 )

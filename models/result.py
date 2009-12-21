@@ -125,7 +125,6 @@ class ResultParent(db.Expando):
         method='GET', params={'result_parent_key': result_parent_key})
     task.add(queue_name='update-dirty')
 
-
   @classmethod
   def UpdateStatsFromDirty(cls, dirty_query):
     """Aggregate the results of dirty ResultTime's.

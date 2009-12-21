@@ -14,39 +14,119 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Handlers for the Selectors API Tests."""
+"""JavaScript Knowledge-Base.
 
-__author__ = 'elsigh@google.com (Lindsey Simon)'
+A set of JavaScript expressions that provide useful information to code optimizers.
+"""
 
+__author__ = 'msamuel@google.com (Mike Samuel)'
 
+import logging
+import re
 from categories import all_test_sets
-from base import decorators
+from categories.jskb import ecmascript_snippets
+from categories.jskb import json
+from models import user_agent
 from base import util
 
 from django import http
-from django.template import Context, loader
-
 
 CATEGORY = 'jskb'
 
 def About(request):
   """About page."""
-  overview = """This page contains a suite of security tests that measure
-    whether the browser supports JavaScript APIs that allow safe
-    interactions between sites, and whether it follows industry
-    best practices for blocking harmful interactions between sites.
-    The initial set of tests were contributed by
-    <a href="http://www.adambarth.com/">Adam Barth</a>,
-    <a href="http://www.collinjackson.com/">Collin Jackson</a>,
-    and <a href="http://www.google.com/profiles/meacer">Mustafa Acer</a>."""
+  overview = re.sub(
+      r'\r\n +', ' ',
+      """
+      This page contains side-effect free JavaScript expressions
+      that expose information about a browser that can be useful to
+      JavaScript code optimizers.
+
+      <p>Optimizers should get output in a JSON format at
+      <a href=\"json?ua=Firefox+3.5\"><tt>json?ua=&hellip;</tt></a>.
+      """)
   return util.About(request, CATEGORY, overview=overview)
 
 
 def EnvironmentChecks(request):
   """The main test page."""
-  return util.Render(request, 'templates/environment-checks.html', params={},
-                     category=CATEGORY)
+  return util.Render(
+      request, 'templates/environment-checks.html',
+      params={ 'snippets': json.to_json(ecmascript_snippets._SNIPPETS) },
+      category=CATEGORY)
 
 
 def Json(request):
-  return http.HttpResponse('yo')
+  def html(s):
+    return re.sub(r'<', '&lt;', re.sub('>', '&gt', re.sub(r'&', '&amp;', s)))
+
+  def help_page(msg, stats_data):
+    return (
+      '<title>%(msg)s</title>'
+      '<h1>%(msg)s</h1>'
+      '<p><code>%(stats_data)s</code></p>'
+      'Serve JSON mapping code snippets to results.\n'
+      '<p>The JSON is the intersection of the (key, value) pairs accross all'
+      ' user agents requested, so if Firefox 3 was requested then only'
+      ' key/value pairs that are present in both Firefox 3.0, 3.1, etc.'
+      ' will be present.\n'
+      '<p>The extra <code>userAgent</code> key maps to the user agents'
+      ' requested so that the output is self-describing.\n'
+      '\n'
+      '<p>CGI params<dl>\n'
+      '  <dt><code>ot</code></dt>\n'
+      '  <dd>The output mime-type</dd>\n'
+      '  <dt><code>ua</code></dt>\n'
+      '  <dd>The user agents requested</dd>\n'
+      '</dl>\n'
+      'E.g.,\n'
+      '  <li><code>ua=Firefox%%2F3.0</code>\n'
+      '  <li><code>ua=MSIE+6.0</code>\n'
+      '  <li><code>ot=application%%2Fjson</code>\n'
+      '  <li><code>ot=text%%2Fplain</code>\n'
+      '</ul>'
+      ) % { 'msg': html(msg), 'stats_data': html('%s' % stats_data) }
+
+  if request.method != 'GET' and request.method != 'HEAD':
+    return http.HttpResponseBadRequest(
+        help_page('Bad method "%s"' % request.method), mimetype='text/html')
+  user_agent_string = None
+  out_type = 'text/plain'
+  for key, value in request.GET.iteritems():
+    if key == u'ua':
+      user_agent_string = value
+    elif key == u'ot' and value in ('text/plain', 'application/json'):
+      out_type = value
+    else:
+      return http.HttpResponseBadRequest(
+        help_page('Unknown CGI param "%s"' % key), mimetype='text/html')
+      raise Exception()
+
+  if user_agent_string is None:
+      return http.HttpResponseBadRequest(
+          help_page('Please specify useragent'), mimetype='text/html')
+
+  user_agent_strings = user_agent_string.split(',')
+  tests = all_test_sets.GetTestSet(CATEGORY).tests
+  stats_data = util.GetStatsData(CATEGORY, tests, user_agent_strings,
+                                 ua_by_param=None, params_str=None,
+                                 version_level='1')
+
+  ua_stats = [(k, stats_data[k].get('results'))
+              for k in stats_data.iterkeys() if k != 'total_runs']
+
+  combined = None
+  for ua, stats in ua_stats:
+    if combined is None:
+      combined = dict([(k, v.get('display')) for (k, v) in stats.iteritems()])
+    else:
+      old_combined = combined
+      combined = dict([(k, v.get('display')) for (k, v) in stats.iteritems()
+                       if (k in old_combined
+                           and old_combined.get(k) == v.get('display'))])
+  if combined is None: combined = {}
+  combined['userAgent'] = [ua for (ua, _) in ua_stats]
+
+  response = http.HttpResponse(mimetype=out_type)
+  response.write(json.to_json(combined))
+  return response

@@ -73,7 +73,8 @@ def Render(request, template, params={}, category=None):
   params['build'] = settings.BUILD
   params['resource_version'] = custom_filters.get_resource_version()
   params['epoch'] = int(time.time())
-  params['request_path'] = request.get_full_path()
+  # we never want o=xhr in our request_path, right?
+  params['request_path'] = request.get_full_path().replace('&o=xhr', '')
   params['request_path_lastbit'] = re.sub('^.+\/([^\/]+$)', '\\1', request.path)
   params['current_ua_string'] = request.META['HTTP_USER_AGENT']
   params['current_ua'] = UserAgent.factory(params['current_ua_string']).pretty()
@@ -271,6 +272,7 @@ def Home(request):
       'page_title': 'Home',
       'results_params': '&'.join(results_params),
       'v': request.GET.get('v', 'top'),
+      'output': output,
       'ua_params': request.GET.get('ua', ''),
       'stats_table_category': test_set.category,
       'stats_table': stats_table,
@@ -530,7 +532,9 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
   current_user_agent_string = request.META['HTTP_USER_AGENT']
 
   browsers = browser_param and browser_param.split(',') or None
-
+  if browsers and len(browsers) == 1 and browsers[0][-1] == '*':
+    browsers = result_stats.CategoryBrowserManager.GetFilteredBrowsers(
+        category, browsers[0][:-1])
   if (not is_skip_static and category in settings.STATIC_CATEGORIES
       and output in ('html', 'xhr')):
     # Use pickle'd data to which we can integrate a user's results.
@@ -539,6 +543,7 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
         'version_level': version_level
         }
     if static_source.startswith('http'):
+      logging.info('Loading stats from url: %s' % static_source)
       response = urlfetch.fetch(static_source)
       stats_data = pickle.loads(response.content)
     else:
@@ -594,6 +599,8 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
     'category_name': test_set.category_name,
     'tests': visible_tests,
     'v': version_level,
+    'output': output,
+    'ua_by_param': browser_param,
     'user_agents': browsers,
     'request_path': request.get_full_path(),
     'current_user_agent': current_browser,
@@ -607,12 +614,12 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
   elif output in ['csv', 'gviz']:
     return GetStatsDataTemplatized(params, output)
   elif output == 'gviz_data':
-    return FormatStatsDataAsGviz(params)
+    return FormatStatsDataAsGviz(params, request)
   else:
     return params
 
 
-def FormatStatsDataAsGviz(params):
+def FormatStatsDataAsGviz(params, request):
   """Takes the output of GetStats and returns a GViz appropriate response.
   This makes use of the Python GViz API on Google Code.
   Copied roughly from:
@@ -622,35 +629,60 @@ def FormatStatsDataAsGviz(params):
   Returns:
     A JSON string as content in a text/plain HttpResponse.
   """
-  columns_order = ['user_agent', 'score', 'total_runs']
-  description = {'user_agent': ('string', 'UserAgent'),
-                 'score': ('number', 'Score'),
-                 'total_runs': ('number', '# Tests')}
-  for test in params['tests']:
-    gviz_coltype = test.score_type
-    if test.score_type == 'custom':
-      gviz_coltype = 'number'
-    description[test.key] = (gviz_coltype, test.name)
-    columns_order.append(test.key)
+  columns_order = ['user_agent',
+                   'score',
+                   #'total_runs'
+                  ]
+  take1 = False
+  take2 = True
+  if take1:
+    description = {'user_agent': ('string', 'User Agent'),
+                   'score': ('number', 'Score'),
+                   #'total_runs': ('number', '# Tests')
+                  }
+  elif take2:
+    description = [('user_agent', 'string'),
+                   ('score', 'number')]
+
+  with_tests = False
+  if with_tests:
+    for test in params['tests']:
+      gviz_coltype = test.score_type
+      if test.score_type == 'custom':
+        gviz_coltype = 'number'
+      description[test.key] = (gviz_coltype, test.name)
+      columns_order.append(test.key)
 
   data = []
   stats = params['stats']
-  logging.info('Stats: %s' % stats)
   for user_agent in params['user_agents']:
-    if stats[user_agent].has_key('results'):
-      row_data = {}
-      row_data['user_agent'] = user_agent
-      row_data['score'] = stats[user_agent]['score']
-      row_data['total_runs'] = stats[user_agent]['total_runs']
-      for test in params['tests']:
-        row_data[test.key] = stats[user_agent]['results'][test.key]['median']
+    # Munge user_agent in this case to get rid of things like (Namaroka) which
+    # make for the charts pretty awful.
+    splitted = user_agent.split(' ')
+    v_bit = splitted[len(splitted) - 1]
+
+    if (stats.has_key(user_agent) and
+        stats[user_agent].has_key('results') and
+        stats[user_agent]['score'] != 0):
+      if take1:
+        row_data = {}
+        row_data['user_agent'] = v_bit
+        row_data['score'] = stats[user_agent]['score']
+      elif take2:
+        row_data = [v_bit, stats[user_agent]['score']]
+
+      if with_tests:
+        row_data['total_runs'] = stats[user_agent]['total_runs']
+        for test in params['tests']:
+          row_data[test.key] = stats[user_agent]['results'][test.key]['median']
       data.append(row_data)
 
   data_table = gviz_api.DataTable(description)
   data_table.LoadData(data)
-  json = data_table.ToJSonResponse(columns_order=columns_order,
-                                   order_by='user_agent')
-  return http.HttpResponse(json, mimetype='text/plain')
+
+  return data_table.ToResponse(columns_order=columns_order,
+                               order_by='user_agent',
+                               tqx=request.GET.get('tqx', ''))
 
 
 def GetSummaryData(user_agent_strings, version_level):

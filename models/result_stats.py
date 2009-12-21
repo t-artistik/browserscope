@@ -119,6 +119,21 @@ class CategoryBrowserManager(db.Model):
     return browsers
 
   @classmethod
+  def GetFilteredBrowsers(cls, category, filter):
+    """Get browsers based on a filter (prefixes for now).
+
+    Args:
+      category: a category string like 'network' or 'reflow'.
+      filter: a string such as 'Firefox', 'Opera 9'
+    Returns:
+      ('Firefox 3.1', 'Safari 4.0', 'Safari 4.5', ...)
+    """
+    filtered_browsers = [
+        browser for browser in cls.GetBrowsers(category, version_level=3)
+        if browser.find(filter) != -1]
+    return filtered_browsers
+
+  @classmethod
   def SetBrowsers(cls, category, version_level, browsers):
     key_name = cls.KeyName(category, version_level)
     memcache.set(key_name, browsers, namespace=cls.MEMCACHE_NAMESPACE)

@@ -24,12 +24,28 @@ from categories import test_set_base
 from categories import all_test_sets
 from models.user_agent import UserAgent
 
-def GetUserAgentString(firefox_version='3.0.6'):
-  return ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
-          'Gecko/2009011912 Firefox/%s' % firefox_version)
+def GetUserAgentString(browser):
+  browser_user_agents = {
+      'Firefox 2.5.1': ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
+                        'Gecko/2009011912 Firefox/2.5.1'),
+      'Firefox 3.0.7': ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
+                        'Gecko/2009011912 Firefox/3.0.7'),
+      'Firefox 3.1.7': ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
+                        'Gecko/2009011912 Firefox/3.1.7'),
+      'Firefox 3.1.8': ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
+                        'Gecko/2009011912 Firefox/3.1.8'),
+      'Firefox 3.5': ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
+                        'Gecko/2009011912 Firefox/3.5'),
+      'IE 7.0': ('Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; '
+                 'Trident/4.0; .NET CLR 2.0.50727; .NET CLR 1.1.4322; '
+                 '.NET CLR 3.0.04506.648; .NET CLR 3.5.21022)'),
+      'Opera 9.70': ('Opera/9.70 (Linux ppc64 ; U; en) Presto/2.2.1'),
+      'Opera 9.50': ('Opera/9.50 (J2ME/MIDP; Opera Mini/4.0.10031/298; U; en)'),
+      }
+  return browser_user_agents[browser]
 
-def GetUserAgent(firefox_version='3.0.6'):
-  return UserAgent.factory(GetUserAgentString(firefox_version))
+def GetUserAgent(browser):
+  return UserAgent.factory(GetUserAgentString(browser))
 
 UNIT_TEST_UA = {'HTTP_USER_AGENT': 'silly-human', 'REMOTE_ADDR': '127.0.0.1'}
 

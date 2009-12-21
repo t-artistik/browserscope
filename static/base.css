@@ -351,9 +351,6 @@ html>body .goog-inline-block {
   font-size: 95%;
   margin: 20px 15px 0 0;
 }
-#bs-home-cur-ua .bs-cur-ua {
-  margin-right: 0;
-}
 
 #bs-results-title {
   border-top: 2px solid #ccc;
@@ -422,6 +419,12 @@ html>body .goog-inline-block {
 .bs-results-dl span {
   margin-right: auto;
 }
+a.bs-l-p {
+  font-size: 95%;
+  margin-left: 2em;
+  padding-left: 20px;
+  background: url(/static/img/link.gif) 0 6px no-repeat;
+}
 
 /**
  * Results Table
@@ -478,6 +481,14 @@ html>body .goog-inline-block {
   background: #eee url(/static/img/gradients.png) 0 -163px repeat-x;
   border-top: 1px solid #ccc;
 }
+/* The expand * link */
+.rt-ua a {
+  margin-left: .5em;
+  text-decoration: none;
+}
+.rt-ua a:hover {
+  text-decoration: underline;
+}
 .rt td.rt-ua,
 .rt th.rt-ua,
 .rt .rt-ua-s-d {
@@ -531,9 +542,11 @@ html>body .goog-inline-block {
   background: #4291bf;
   height: 10px;
   width: 10px;
-  margin-right: .4em;
   -webkit-border-radius: 5px;
   -moz-border-radius: 5px;
+}
+.rt-res .bs-cur-ua {
+  margin-right: .4em;
 }
 
 .rt-loading,
@@ -605,6 +618,39 @@ html>body .goog-inline-block {
 .rt-tot {
   background: #f5f5f5;
   text-align: right;
+}
+
+/* results output toggle */
+.bs-o {
+  position: relative;
+  top: 4px;
+}
+.bs-o-gviz,
+.bs-o-xhr {
+  background: #ededec url(/static/img/table_bar_line_sprite.gif) 4px 3px no-repeat;
+  width: 24px;
+  height: 18px;
+  border: 1px solid #aaa;
+  display: inline-block;
+  cursor: pointer;
+}
+.bs-o-gviz {
+  background-position: -65px -21px;
+  -moz-border-radius-topright: 3px;
+  -moz-border-radius-bottomright: 3px;
+  -webkit-border-top-right-radius: 3px;
+  -webkit-border-bottom-right-radius: 3px;
+}
+.bs-o-xhr {
+  margin-left: 4px;
+  -moz-border-radius-topleft: 3px;
+  -moz-border-radius-bottomleft: 3px;
+  -webkit-border-top-left-radius: 3px;
+  -webkit-border-bottom-left-radius: 3px;
+}
+.bs-o .bs-o-sel {
+  border: 1px solid #666;
+  background-color: #8a8b89;
 }
 
 /* down arrow */

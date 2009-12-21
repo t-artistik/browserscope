@@ -133,53 +133,6 @@ class UserAgentTest(unittest.TestCase):
         UserAgent.parse_to_string_list('Safari 100.33preA4'))
 
 
-
-# class UserAgentGroupTest(unittest.TestCase):
-
-#   def setUp(self):
-#     for version_level, _ in BROWSER_NAV:
-#       UserAgentGroup.ClearMemcache(version_level)
-
-#     user_agent_strings = [
-#         ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
-#         'Gecko/2009011912 Firefox/3.0.7'),
-#         ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
-#          'Gecko/2009011912 Firefox/3.1.8'),
-#         ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
-#          'Gecko/2009011912 Firefox/3.1.8'),
-#         ('Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.9.0.6) '
-#          'Gecko/2009011912 Firefox/3.1.7'),
-#         ('Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1; Trident/4.0; '
-#          '.NET CLR 2.0.50727; .NET CLR 1.1.4322; .NET CLR 3.0.04506.648;'
-#          '.NET CLR 3.5.21022)'),
-#         ]
-#     for user_agent_string in user_agent_strings:
-#       user_agent = UserAgent.factory(user_agent_string)
-#       user_agent.update_groups()
-
-#   def test_update_groups_version_level_zero(self):
-#     self.assertEqual(
-#         ['Firefox', 'IE'],
-#         UserAgentGroup.GetStrings(version_level=0))
-
-#   def test_update_groups_version_level_one(self):
-#     self.assertEqual(
-#         ['Firefox 3', 'IE 7'],
-#         UserAgentGroup.GetStrings(version_level=1))
-
-#   def test_update_groups_version_level_two(self):
-#     self.assertEqual(
-#         ['Firefox 3.0', 'Firefox 3.1', 'IE 7.0'],
-#         UserAgentGroup.GetStrings(version_level=2))
-
-#   def test_update_groups_version_level_three(self):
-#     # This also tests that the order comes out the way we'd want even though
-#     # they didn't go in in that order.
-#     self.assertEqual(
-#         ['Firefox 3.0.7', 'Firefox 3.1.7', 'Firefox 3.1.8', 'IE 7.0'],
-#         UserAgentGroup.GetStrings(version_level=3))
-
-
 class ChromeFrameTest(unittest.TestCase):
 
   CHROME_UA_STRING = ('Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US) '

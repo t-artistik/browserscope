@@ -47,7 +47,7 @@ class ResultTest(unittest.TestCase):
     for scores in ((0, 0, 500), (1, 1, 200),
                    (0, 2, 300), (1, 3, 100), (0, 4, 400)):
       parent = ResultParent.AddResult(
-          test_set, '12.2.2.25', mock_data.GetUserAgentString(),
+          test_set, '12.2.2.25', mock_data.GetUserAgentString('Firefox 3.5'),
           'apple=%s,banana=%s,coconut=%s' % scores)
     rankers = test_set.GetRankers('Firefox 3')
     self.assertEqual([(0, 5), (2, 5), (300, 5)],
@@ -59,7 +59,7 @@ class ResultTest(unittest.TestCase):
     test_set = mock_data.MockTestSet(params=params)
     for scores in ((1, 0, 2), (1, 1, 1), (0, 2, 200)):
       parent = ResultParent.AddResult(
-          test_set, '12.2.2.25', mock_data.GetUserAgentString(),
+          test_set, '12.2.2.25', mock_data.GetUserAgentString('Firefox 3.5'),
           'apple=%s,banana=%s,coconut=%s' % scores, params_str=params_str)
     ranker = test_set.GetTest('coconut').GetRanker('Firefox 3')
     self.assertEqual((2, 3), ranker.GetMedianAndNumScores())
@@ -67,7 +67,7 @@ class ResultTest(unittest.TestCase):
   def testAddResult(self):
     test_set = mock_data.MockTestSet()
     parent = ResultParent.AddResult(
-        test_set, '12.2.2.25', mock_data.GetUserAgentString(),
+        test_set, '12.2.2.25', mock_data.GetUserAgentString('Firefox 3.5'),
         'apple=1,banana=11,coconut=111')
     expected_results = {
         'apple': 1,
@@ -79,7 +79,7 @@ class ResultTest(unittest.TestCase):
   def testAddResultForTestSetWithAdjustResults(self):
     test_set = MockTestSetWithAdjustResults()
     parent = ResultParent.AddResult(
-        test_set, '12.2.2.25', mock_data.GetUserAgentString(),
+        test_set, '12.2.2.25', mock_data.GetUserAgentString('Firefox 3.5'),
         'apple=0,banana=80,coconut=200')
     self.assertEqual(0, parent.apple)
     self.assertEqual(80, parent.banana)
@@ -95,7 +95,7 @@ class ResultTest(unittest.TestCase):
   def testAddResultWithExpando(self):
     test_set = MockTestSetWithAdjustResults()
     parent = ResultParent.AddResult(
-        test_set, '12.2.2.25', mock_data.GetUserAgentString(),
+        test_set, '12.2.2.25', mock_data.GetUserAgentString('Firefox 3.5'),
         'apple=1,banana=49,coconut=499')
     self.assertEqual(1, parent.apple)
     self.assertEqual(49, parent.banana)
@@ -141,7 +141,7 @@ class IncrementAllCountsTest(unittest.TestCase):
   def testIncrementAllCountsBogusTest(self):
     test_set = mock_data.MockTestSet('foo')
     parent = ResultParent.AddResult(
-        test_set, '12.2.2.25', mock_data.GetUserAgentString(),
+        test_set, '12.2.2.25', mock_data.GetUserAgentString('Firefox 3.5'),
         'apple=0,banana=44,coconut=444')
     db.put(ResultTime(parent=parent,
                       test='bogus test key',

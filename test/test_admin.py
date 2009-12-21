@@ -104,7 +104,7 @@ class TestDataDump(unittest.TestCase):
     keys = []
     for scores in ((1, 4, 50), (1, 1, 20), (0, 2, 30), (1, 0, 10), (1, 3, 10)):
       result = ResultParent.AddResult(
-          test_set, '1.2.2.5', mock_data.GetUserAgentString(),
+          test_set, '1.2.2.5', mock_data.GetUserAgentString('Firefox 3.5'),
           'apple=%s,banana=%s,coconut=%s' % scores)
       keys.append(str(result.key()))
     params = {
@@ -133,7 +133,7 @@ class TestDataDumpKeys(unittest.TestCase):
     for scores in ((0, 10, 100), (1, 20, 200)):
       ip = '1.2.2.%s' % scores[1]
       result = ResultParent.AddResult(
-          test_set, ip, mock_data.GetUserAgentString(),
+          test_set, ip, mock_data.GetUserAgentString('Firefox 3.5'),
           'apple=%s,banana=%s,coconut=%s' % scores,
           created=created_base + datetime.timedelta(seconds=scores[1]))
       keys.append(str(result.key()))
@@ -152,7 +152,7 @@ class TestDataDumpKeys(unittest.TestCase):
     expected_keys = []
     for scores in ((1, 4, 50), (1, 1, 20), (0, 2, 30), (1, 0, 10), (1, 3, 10)):
       result = ResultParent.AddResult(
-          test_set, '1.2.2.5', mock_data.GetUserAgentString(),
+          test_set, '1.2.2.5', mock_data.GetUserAgentString('Firefox 3.5'),
           'apple=%s,banana=%s,coconut=%s' % scores)
       expected_keys.append(str(result.key()))
     params = {

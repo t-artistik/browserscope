@@ -52,7 +52,9 @@
   <span class="bs-cur-ua goog-inline-block"></span>
   <span>
     We think you're using
-    <strong id="bs-home-cur-ua-s">{{ current_ua }}</strong>.
+    <strong
+      id="bs-home-cur-ua-s"
+      title="{{ current_ua_string }}">{{ current_ua }}</strong>
   </span>
   <a
     href="http://code.google.com/p/browserscope/issues/entry?template=UA%20Parsing%20Is%20Incorrect&comment={{ current_ua }} is not {{ current_ua_string }}"
@@ -99,36 +101,16 @@
 <script>
   (function(){
     var category = '{{ stats_table_category }}';
-    /*
-    var categories = {};
-    {% ifequal stats_table_category "summary" %}
-      categories['{{ stats_table_category }}'] = {
-        'container': document.getElementById(
-             '{{ stats_table_category }}-results'),
-        'name': 'Summary'
-      };
-    {% endifequal %}
-
-    {% for app_category in app_categories %}
-      categories['{{ app_category|by_key:0 }}'] = {
-        'container': document.getElementById(
-            '{{ app_category|by_key:0 }}-results'),
-        'name': '{{ app_category|by_key:1 }}'
-      };
-    {% endfor %}
-    */
     var httpUserAgent = '{{ current_ua_string }}';
+    var output = '{{ output }}';
     var userAgentPretty = '{{ current_ua }}';
     var realUaString = Util.reconcileClientServerUaPretty(httpUserAgent,
         userAgentPretty);
     var resultsUriParams = '{{ results_params }}';
-    var uaUriParams = '{{ ua_params }}'
-    if (uaUriParams != '') {
-      resultsUriParams += '&ua=' + uaUriParams;
-    }
+    var uaUriParams = '{{ ua_params }}';
     var browserFamily = '{{ v }}';
     var controller = new Util.ResultTablesController(category,
-        browserFamily, realUaString, resultsUriParams);
+        browserFamily, output, realUaString, uaUriParams, resultsUriParams);
     if (realUaString != userAgentPretty) {
       var curUaStringEl = document.getElementById('bs-home-cur-ua-s');
       curUaStringEl.innerHTML = realUaString;
@@ -140,5 +122,7 @@
     }
   })();
 </script>
+<script src="http://www.google.com/jsapi" defer></script>
+
 {% endblock %}
 

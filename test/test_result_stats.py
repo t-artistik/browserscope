@@ -50,14 +50,14 @@ class CategoryBrowserManagerTest(unittest.TestCase):
   def testAddUserAgentBasic(self):
     category = 'network'
     result_stats.CategoryBrowserManager.AddUserAgent(
-        category, mock_data.GetUserAgent('3.5'))
+        category, mock_data.GetUserAgent('Firefox 3.5'))
     result_stats.CategoryBrowserManager.AddUserAgent(
-        category, mock_data.GetUserAgent('3.0.6'))
+        category, mock_data.GetUserAgent('Firefox 3.0.7'))
     for version_level, expected_browsers in enumerate((
         ['Firefox'],
         ['Firefox 3'],
         ['Firefox 3.0', 'Firefox 3.5'],
-        ['Firefox 3.0.6', 'Firefox 3.5'])):
+        ['Firefox 3.0.7', 'Firefox 3.5'])):
       browsers = result_stats.CategoryBrowserManager.GetBrowsers(
         category, version_level)
       self.assertEqual(expected_browsers, browsers)
@@ -72,7 +72,7 @@ class CategoryBrowserManagerTest(unittest.TestCase):
     category = 'network'
     version_level = 3
     cls = result_stats.CategoryBrowserManager
-    cls.AddUserAgent(category, mock_data.GetUserAgent('3.5'))
+    cls.AddUserAgent(category, mock_data.GetUserAgent('Firefox 3.5'))
     self.assertEqual(['Firefox 3.5'], cls.GetBrowsers(category, version_level))
 
     # Load browsers from db into memcache and return.
@@ -141,6 +141,46 @@ class CategoryBrowserManagerTest(unittest.TestCase):
     self.assertEqual(['Firefox 3.0', 'Firefox 3.5', 'iPhone 1.1', 'Safari 5.0'],
                      browsers)
 
+
+class CategoryBrowserManagerFilterTest(unittest.TestCase):
+
+  def setUp(self):
+    self.cls = result_stats.CategoryBrowserManager
+    self.category = 'network'
+    db.delete(self.cls.all(keys_only=True).fetch(1000))
+    result_stats.CategoryBrowserManager.AddUserAgent(
+        self.category, mock_data.GetUserAgent('Firefox 2.5.1'))
+    result_stats.CategoryBrowserManager.AddUserAgent(
+        self.category, mock_data.GetUserAgent('Firefox 3.1.8'))
+    result_stats.CategoryBrowserManager.AddUserAgent(
+        self.category, mock_data.GetUserAgent('Firefox 3.0.7'))
+    result_stats.CategoryBrowserManager.AddUserAgent(
+        self.category, mock_data.GetUserAgent('Firefox 3.1.7'))
+    result_stats.CategoryBrowserManager.AddUserAgent(
+        self.category, mock_data.GetUserAgent('IE 7.0'))
+    memcache.flush_all()
+
+  def tearDown(self):
+    db.delete(self.cls.all(keys_only=True).fetch(1000))
+    memcache.flush_all()
+
+  def testGetFilteredBrowsersFamily(self):
+    expected_browsers = [
+        'Firefox 2.5.1', 'Firefox 3.0.7', 'Firefox 3.1.7', 'Firefox 3.1.8']
+    browsers = self.cls.GetFilteredBrowsers(self.category, 'Firefox')
+    self.assertEqual(expected_browsers, browsers)
+
+  def testGetFilteredBrowsersMajorVersion(self):
+    expected_browsers = ['Firefox 3.0.7', 'Firefox 3.1.7', 'Firefox 3.1.8']
+    browsers = self.cls.GetFilteredBrowsers(self.category, 'Firefox 3')
+    self.assertEqual(expected_browsers, browsers)
+
+  def testGetFilteredBrowsersMinorVersion(self):
+    expected_browsers = ['Firefox 3.1.7', 'Firefox 3.1.8']
+    browsers = self.cls.GetFilteredBrowsers(self.category, 'Firefox 3.1')
+    self.assertEqual(expected_browsers, browsers)
+
+
 class CategoryStatsManagerTest(unittest.TestCase):
 
   MANAGER_QUERY = result_stats.CategoryBrowserManager.all(keys_only=True)
@@ -155,15 +195,15 @@ class CategoryStatsManagerTest(unittest.TestCase):
     test_set = mock_data.MockTestSet()
     add_result_params = (
         # ((apple, banana, coconut), firefox_version)
-        ((0, 0, 500), '3.0.6'),
-        ((1, 1, 200), '3.0.6'),
-        ((0, 2, 300), '3.0.6'),
-        ((1, 3, 100), '3.5'),
-        ((0, 4, 400), '3.5')
+        ((0, 0, 500), 'Firefox 3.0.7'),
+        ((1, 1, 200), 'Firefox 3.0.7'),
+        ((0, 2, 300), 'Firefox 3.0.7'),
+        ((1, 3, 100), 'Firefox 3.5'),
+        ((0, 4, 400), 'Firefox 3.5')
         )
-    for scores, firefox_version in add_result_params:
+    for scores, browser in add_result_params:
       parent = ResultParent.AddResult(
-          test_set, '12.2.2.25', mock_data.GetUserAgentString(firefox_version),
+          test_set, '12.2.2.25', mock_data.GetUserAgentString(browser),
           'apple=%s,banana=%s,coconut=%s' % scores)
     level_1_stats = {
         'Firefox 3': {
@@ -181,7 +221,7 @@ class CategoryStatsManagerTest(unittest.TestCase):
         test_set, browsers=('Firefox 3',)))
 
     level_3_stats = {
-        'Firefox 3.0.6': {
+        'Firefox 3.0.7': {
             'summary_score': 603,
             'summary_display': '301',
             'total_runs': 3,
@@ -203,4 +243,4 @@ class CategoryStatsManagerTest(unittest.TestCase):
             },
         }
     self.assertEqual(level_3_stats, result_stats.CategoryStatsManager.GetStats(
-        test_set, browsers=('Firefox 3.0.6', 'Firefox 3.5')))
+        test_set, browsers=('Firefox 3.0.7', 'Firefox 3.5')))

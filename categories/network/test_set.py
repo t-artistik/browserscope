@@ -51,6 +51,7 @@ class NetworkTest(test_set_base.TestBase):
         max_value=max_value,
         cell_align=cell_align,
         is_hidden_stat=is_hidden_stat)
+    self.url_name = url_name
 
 
 class BooleanNetworkTest(NetworkTest):
@@ -96,30 +97,33 @@ This test measures the maximum number of connections a browser will open total -
 The upper limit is 60, so if a browser actually supports more than that it'll still show up as 60.''',
     min_value=0, max_value=60,
     cell_align='right'),
+  # parscript is deprecated.
+  #BooleanNetworkTest(
+  #  'parscript', '|| Scripts', 'scripts-block', '', is_hidden_stat=True),
   BooleanNetworkTest(
     'parscriptscript', '|| Script Script', 'scripts-block-scripts',
-    '''When most browsers start downloading an external script, they wait until the script is done downloading, parsed, and executed
+    '''When some browsers start downloading an external script, they wait until the script is done downloading, parsed, and executed
 before starting any other downloads. Although <i>parsing and executing</i> scripts in order is important for maintaining code dependencies,
 it's possible to safely <i>download</i> scripts in parallel with other resources in the page (including other scripts).
-This test determines if scripts can be downloaded in parallel with other resources in the page.'''),
+This test determines if the browser downloads scripts in parallel with other scripts in the page.'''),
   BooleanNetworkTest(
     'parscriptstylesheet', '|| Script Stylesheet', 'scripts-block-stylesheets',
-    '''When most browsers start downloading an external script, they wait until the script is done downloading, parsed, and executed
+    '''When some browsers start downloading an external script, they wait until the script is done downloading, parsed, and executed
 before starting any other downloads. Although <i>parsing and executing</i> scripts in order is important for maintaining code dependencies,
 it's possible to safely <i>download</i> scripts in parallel with other resources in the page (including other scripts).
-This test determines if scripts can be downloaded in parallel with other resources in the page.'''),
+This test determines if the browser downloads scripts in parallel with other stylesheets in the page.'''),
   BooleanNetworkTest(
     'parscriptimage', '|| Script Image', 'scripts-block-images',
-    '''When most browsers start downloading an external script, they wait until the script is done downloading, parsed, and executed
+    '''When some browsers start downloading an external script, they wait until the script is done downloading, parsed, and executed
 before starting any other downloads. Although <i>parsing and executing</i> scripts in order is important for maintaining code dependencies,
 it's possible to safely <i>download</i> scripts in parallel with other resources in the page (including other scripts).
-This test determines if scripts can be downloaded in parallel with other resources in the page.'''),
+This test determines if the browser downloads scripts in parallel with other images in the page.'''),
   BooleanNetworkTest(
     'parscriptiframe', '|| Script Iframe', 'scripts-block-iframes',
-    '''When most browsers start downloading an external script, they wait until the script is done downloading, parsed, and executed
+    '''When some browsers start downloading an external script, they wait until the script is done downloading, parsed, and executed
 before starting any other downloads. Although <i>parsing and executing</i> scripts in order is important for maintaining code dependencies,
 it's possible to safely <i>download</i> scripts in parallel with other resources in the page (including other scripts).
-This test determines if scripts can be downloaded in parallel with other resources in the page.'''),
+This test determines if the browser downloads scripts in parallel with other iframes in the page.'''),
   BooleanNetworkTest(
     'parsheet', '|| CSS', 'stylesheets-block',
     '''Similar to scripts, some browsers block all downloads once they start downloading a stylesheet.
