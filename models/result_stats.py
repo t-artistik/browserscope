@@ -71,15 +71,16 @@ class CategoryBrowserManager(db.Model):
       category: a category string like 'network' or 'reflow'.
       user_agent: a UserAgent instance.
     """
-    ua_browsers = user_agent.get_string_list()
     key_names = [cls.KeyName(category, version_level)
                  for version_level in range(4)]
     level_browsers = memcache.get_multi(key_names,
                                         namespace=cls.MEMCACHE_NAMESPACE)
 
     browser_key_names = []
+    ua_browsers = user_agent.get_string_list()
+    max_ua_browsers_index = len(ua_browsers) - 1
     for version_level, key_name in enumerate(key_names):
-      browser = ua_browsers[min(len(ua_browsers) - 1, version_level)]
+      browser = ua_browsers[min(max_ua_browsers_index - 1, version_level)]
       if browser not in level_browsers.get(key_name, []):
         browser_key_names.append((browser, key_name))
     managers = cls.get_by_key_name([x[1] for x in browser_key_names])
@@ -135,6 +136,7 @@ class CategoryBrowserManager(db.Model):
 
   @classmethod
   def SetBrowsers(cls, category, version_level, browsers):
+    cls.SortBrowsers(browsers)
     key_name = cls.KeyName(category, version_level)
     memcache.set(key_name, browsers, namespace=cls.MEMCACHE_NAMESPACE)
     manager = cls.get_or_insert(key_name)
@@ -250,10 +252,10 @@ class CategoryStatsManager(object):
     return stats
 
   @classmethod
-  def UpdateStatsCache(cls, category, user_agent):
+  def UpdateStatsCache(cls, category, browsers):
     test_set = all_test_sets.GetTestSet(category)
     ua_stats = {}
-    for browser in user_agent.get_string_list():
+    for browser in browsers:
       medians, num_scores = test_set.GetMediansAndNumScores(browser)
       ua_stats[browser] = test_set.GetStats(medians, num_scores)
     memcache.set_multi(ua_stats, **cls.MemcacheParams(category))
@@ -271,7 +273,7 @@ class CategoryStatsManager(object):
 
 def UpdateCategory(category, user_agent):
   CategoryBrowserManager.AddUserAgent(category, user_agent)
-  CategoryStatsManager.UpdateStatsCache(category, user_agent)
+  CategoryStatsManager.UpdateStatsCache(category, user_agent.get_string_list())
 
 
 def ScheduleCategoryUpdate(category, user_agent):

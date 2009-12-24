@@ -176,6 +176,14 @@ def UpdateDirty(request):
 
 
 @decorators.admin_required
+def PauseUpdateDirty(request):
+  paused_was = UpdateDirtyController.IsPaused()
+  UpdateDirtyController.SetPaused(True)
+  paused_is = UpdateDirtyController.IsPaused()
+  return http.HttpResponse('PauseUpdateDirty Done. Was: %s, Is: %s' %
+                           (paused_was, paused_is))
+
+@decorators.admin_required
 def UnPauseUpdateDirty(request):
   paused_was = UpdateDirtyController.IsPaused()
   UpdateDirtyController.SetPaused(False)

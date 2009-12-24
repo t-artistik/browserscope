@@ -90,12 +90,12 @@ class CategoryBrowserManagerTest(unittest.TestCase):
   def testSetBrowsers(self):
     category = 'basil'
     version_level = 1
-    expected_browsers = ['Firefox 3.0', 'IE 8', 'Safari 5.8.2']
+    expected_browsers = ['IE 8', 'Safari 5.8.2', 'Firefox 3.0']
     result_stats.CategoryBrowserManager.SetBrowsers(
         category, version_level, expected_browsers)
     browsers = result_stats.CategoryBrowserManager.GetBrowsers(
         category, version_level)
-    self.assertEqual(expected_browsers, browsers)
+    self.assertEqual(sorted(expected_browsers), browsers)
 
   def testSetBrowsersDbAndMemcacheUse(self):
     category = 'basil'

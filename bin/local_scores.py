@@ -54,6 +54,12 @@ SCORE_SQL = """
       %(limit_clause)s
     ;"""
 
+CATEGORY_BROWSERS_SQL = """
+    SELECT category, family, v1, v2, v3
+    FROM scores
+    GROUP BY category, family, v1, v2, v3
+    ;"""
+
 CATEGORY_COUNTS_SQL = """
     SELECT category, count(*) FROM scores GROUP BY category
     ;"""
@@ -185,23 +191,21 @@ class CountRanker(object):
     return self.counts
 
 
-rankers = {}
-def GetRanker(test, browser, params_str=None):
-  global rankers
-  key = test.test_set.category, test.key, browser, params_str
-  if not key in rankers:
-    if test.min_value >= 0 and test.max_value <= CountRanker.MAX_SCORE:
-      ranker = CountRanker()
-    else:
-      ranker = LastNRanker()
-    rankers[key] = ranker
-  return rankers[key]
+def CreateRanker(test, browser, params_str=None):
+  if test.min_value >= 0 and test.max_value <= CountRanker.MAX_SCORE:
+    return CountRanker()
+  else:
+    return LastNRanker()
 
-def DumpRankers(fh):
-  global rankers
-  for (category, test, browser, params_str), ranker in sorted(rankers.items()):
-    fields = [category, test, browser, params_str or 'None']
-    fields.append(ranker.__class__.__name__)
+
+def DumpRankers(fh, rankers):
+  for (category, test, browser), ranker in sorted(rankers.items()):
+    fields = [
+        category,
+        test,
+        browser,
+        ranker.__class__.__name__,
+        ]
     median, num_scores = ranker.GetMedianAndNumScores()
     fields.append(str(median))
     fields.append(str(num_scores))
@@ -219,6 +223,7 @@ def BuildRankers(db):
   last_category = None
   last_test_key = None
   last_parts = None
+  rankers = {}
   for category, test_key, family, v1, v2, v3, score in cursor.fetchall():
     if test_key != last_test_key:
       if category != last_category:
@@ -226,15 +231,32 @@ def BuildRankers(db):
         last_category = category
       test = test_set.GetTest(test_key)
       if test is None:
-        logging.warn('No test in category: %s, %s', category, test_key)
         continue
       last_test_key = test_key
     parts = family, v1, v2, v3
     if parts != last_parts:
       browsers = UserAgent.parts_to_string_list(family, v1, v2, v3)
     for browser in browsers:
-      ranker = GetRanker(test, browser)
+      ranker_key = category, test_key, browser
+      if not ranker_key in rankers:
+        rankers[ranker_key] = CreateRanker(test, browser)
+      ranker = rankers[ranker_key]
       ranker.Add(score)
+  return rankers
+
+
+def GetCategoryBrowsers(db):
+  cursor = db.cursor()
+  cursor.execute(CATEGORY_BROWSERS_SQL)
+  category_browsers = {}
+  for category, family, v1, v2, v3 in cursor.fetchall():
+    ua_browsers = UserAgent.parts_to_string_list(family, v1, v2, v3)
+    max_ua_browsers_index = len(ua_browsers) - 1
+    for version_level in range(4):
+      category_browsers.setdefault((category, version_level), set()).add(
+          ua_browsers[min(max_ua_browsers_index, version_level)])
+  return category_browsers
+
 
 def CheckTests(db):
   cursor = db.cursor()
@@ -336,13 +358,13 @@ def main(argv):
   start = datetime.datetime.now()
   db = MySQLdb.connect(read_default_file=mysql_default_file)
   #DumpScores(db)
-  #BuildRankers(db)
-  #DumpRankers(sys.stdout)
-  CheckTests(db)
+  rankers = BuildRankers(db)
+  DumpRankers(sys.stdout, rankers)
+  #CheckTests(db)
   end = datetime.datetime.now()
-  print '  start: %s' % start
-  print '    end: %s' % end
-  print 'elapsed: %s' % str(end - start)[:-7]
+  logging.info('  start: %s', start)
+  logging.info('    end: %s', end)
+  logging.info('elapsed: %s', str(end - start)[:-7])
 
 
 if __name__ == '__main__':

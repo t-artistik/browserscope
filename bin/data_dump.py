@@ -50,11 +50,17 @@ import MySQLdb
 import os
 import simplejson
 import sys
+import urllib
+
+import local_scores
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from third_party.appengine_tools import appengine_rpc
 
+MAX_ENTITIES_REQUESTED = 100
+MAX_RANKERS_UPLOADED = 50
 RESTART_OVERLAP_MINUTES=15
+
 CREATE_TABLES_SQL = (
     """CREATE TABLE IF NOT EXISTS result_parent_key (
       result_parent_key VARCHAR(100) NOT NULL PRIMARY KEY
@@ -185,19 +191,25 @@ class DataDumpRpcServer(object):
     # TODO: Grab email/password from config
     return self.user, getpass.getpass('Password for %s: ' % self.user)
 
-  def Send(self, path, params):
+  def Send(self, path, params, method='POST', json_response=True):
     # Drop parameters with value=None. Otherwise, the string 'None' gets sent.
     rpc_params = dict((str(k), v) for k, v in params.items() if v is not None)
     logging.info(
         'http://%s%s%s', self.host, path, rpc_params and '?%s' % '&'.join(
         ['%s=%s' % (k, v) for k, v in sorted(rpc_params.items())]) or '')
-    # "payload=None" forces a GET request instead of a POST (default).
-    response_data = self.rpc_server.Send(path, payload=None, **rpc_params)
+    # "payload=None" would a GET instead a POST.
+    if method == 'GET':
+      response_data = self.rpc_server.Send(path, payload=None, **rpc_params)
+    else:
+      response_data = self.rpc_server.Send(
+          path, payload=urllib.urlencode(rpc_params))
     if response_data.startswith('bailing'):
       logging.fatal(response_data)
       raise RuntimeError
-    else:
+    elif json_response:
       return simplejson.loads(response_data)
+    else:
+      return response_data
 
   def GetKeys(self, model, max_created=None):
     """Yield a list of keys for the given model."""
@@ -223,9 +235,9 @@ class DataDumpRpcServer(object):
     while needed_keys:
       logging.info('DumpEntities: model=%s, num_needed=%s', model, len(needed_keys))
       next_keys = []
-      for i, key in enumerate(needed_keys):
+      for i, key in enumerate(sorted(needed_keys)):
         next_keys.append(key)
-        if i == 100:
+        if i == MAX_ENTITIES_REQUESTED:
           break
       key_prefix = os.path.commonprefix(next_keys)
       prefix_len = len(key_prefix)
@@ -247,6 +259,10 @@ class DataDumpRpcServer(object):
           needed_keys.discard(lost_key)
           if lost_model == 'UserAgent':
             cursor.execute(INSERT_SQL['lost-UserAgent'], lost_key)
+        elif 'dirty_key' in row:
+          dirty_key = row['dirty_key']
+          logging.info('Skipping dirty ResultParent: %s')
+          needed_keys.discard(dirty_key)
         else:
           cursor.execute(INSERT_SQL[row['model_class']], row)
           if 'result_parent_key' in row:
@@ -289,7 +305,7 @@ class DataDumpRpcServer(object):
     for create_sql in CREATE_TABLES_SQL:
       cursor.execute(create_sql)
 
-  def Run(self, db, run_start):
+  def DownloadEntities(self, db, run_start):
     self.CreateTables(db)
 
     needed_result_parent_keys = self.NeededResultParentKeys(db)
@@ -312,15 +328,62 @@ class DataDumpRpcServer(object):
       cursor = db.cursor()
       cursor.execute(UPDATE_SCORES)
 
+  def PauseDirtyManager(self):
+    self.rpc_server.Send('/admin/pause_dirty')
+
+  def UnpauseDirtyManager(self):
+    self.rpc_server.Send('/admin/unpause_dirty')
+
+  def UploadRankers(self, rankers):
+    ranker_batch = {}
+    num_rankers = len(rankers)
+    for ranker_key, ranker in rankers.items():
+      if len(ranker_batch) < MAX_RANKERS_UPLOADED:
+        ranker_batch[ranker_key] = ranker
+      else:
+        logging.info('Rankers to update: %s', num_rankers)
+        data = []
+        params_str = None
+        for (category, test_key, browser), ranker in ranker_batch.items():
+          data.append([
+              category,
+              test_key,
+              browser,
+              params_str,
+              ranker.__class__.__name__,
+              ranker.GetMedianAndNumScores()[1],
+              '|'.join(map(str, ranker.GetValues())),
+              ])
+        params = {
+            'data': simplejson.dumps(data),
+            }
+        response_params = self.Send('/admin/rankers/upload', params)
+        updated_rankers = response_params['updated_rankers']
+        num_rankers -= len(updated_rankers)
+        for category, test_key, browser, params_str in updated_rankers:
+          del ranker_batch[(category, test_key, browser)]
+
+  def UploadCategoryBrowsers(self, db):
+    category_browsers = local_scores.GetCategoryBrowsers(db)
+    for (category, version_level), browsers in category_browsers.items():
+      params = {
+          'category': category,
+          'version_level': version_level,
+          'browsers': ','.join(list(browsers)),
+          }
+      self.Send('/admin/upload_category_browsers', params, json_response=False)
 
 def ParseArgs(argv):
   options, args = getopt.getopt(
       argv[1:],
-      'h:e:p:f:',
-      ['host=', 'email=', 'mysql_default_file='])
+      'h:e:f:r:c',
+      ['host=', 'email=', 'mysql_default_file=',
+       'release', 'category_browsers_only'])
   host = None
   gae_user = None
   mysql_default_file = None
+  is_release = False
+  is_category_browsers_only = False
   for option_key, option_value in options:
     if option_key in ('-h', '--host'):
       host = option_value
@@ -328,14 +391,36 @@ def ParseArgs(argv):
       gae_user = option_value
     elif option_key in ('-f', '--mysql_default_file'):
       mysql_default_file = option_value
-  return host, gae_user, mysql_default_file, args
+    elif option_key in ('-r', '--release'):
+      is_release = True
+    elif option_key in ('-r', '--release'):
+      is_release = True
+    elif option_key in ('-c', '--category_browsers_only'):
+      is_category_browsers_only = True
+  return host, gae_user, mysql_default_file, is_release, is_category_browsers_only, args
 
 
 def main(argv):
-  host, user, mysql_default_file, argv = ParseArgs(argv)
+  (host, user, mysql_default_file,
+   is_release, is_category_browsers_only, argv) = ParseArgs(argv)
   start = datetime.datetime.now()
   db = MySQLdb.connect(read_default_file=mysql_default_file)
-  DataDumpRpcServer(host, user).Run(db, start)
+  if is_category_browsers_only:
+    server = DataDumpRpcServer(host, user)
+    server.UploadCategoryBrowsers(db)
+  elif is_release:
+    try:
+      server = DataDumpRpcServer(host, user)
+      server.PauseDirtyManager()
+      server.DownloadEntities(db, start)
+      rankers = local_scores.BuildRankers(db)
+      server.UploadRankers(rankers)
+      server.UploadCategoryBrowsers(db)
+    finally:
+      server.UnpauseDirtyManager()
+  else:
+    server = DataDumpRpcServer(host, user)
+    server.DownloadEntities(db, start)
   end = datetime.datetime.now()
   print '  start: %s' % start
   print '    end: %s' % end

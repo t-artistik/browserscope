@@ -28,7 +28,9 @@ import settings
 
 from django.test.client import Client
 from django.utils import simplejson
+from google.appengine.api import memcache
 from google.appengine.ext import db
+from models import result_stats
 from models.result import ResultParent
 from models.result import ResultTime
 from models.user_agent import UserAgent
@@ -175,56 +177,57 @@ class TestDataDumpKeys(unittest.TestCase):
     keys.extend(response_params['keys'])
     self.assertEqual(sorted(expected_keys), sorted(keys))
 
-# class TestDataDumpWithMocks(unittest.TestCase):
-#   def setUp(self):
-#     self.client = Client()
-#     self.old_result_parent_get = ResultParent.get
 
-#   def tearDown(self):
-#     ResultParent.get = self.old_result_parent_get
-#     db.delete(ResultParent.all(keys_only=True).fetch(1000))
-#     db.delete(ResultTime.all(keys_only=True).fetch(1000))
-#     db.delete(UserAgent.all(keys_only=True).fetch(1000))
+class TestUploadCategoryBrowsers(unittest.TestCase):
+  def setUp(self):
+    self.client = Client()
+    self.manager = result_stats.CategoryBrowserManager
 
-#   def testResultParentKeyTimeout(self):
-#     test_set = mock_data.MockTestSet()
-#     keys = []
-#     for scores in ((1, 4, 50), (1, 1, 20), (0, 2, 30), (1, 0, 10), (1, 3, 10)):
-#       result = ResultParent.AddResult(
-#           test_set, '1.2.2.5', mock_data.GetUserAgentString(),
-#           'apple=%s,banana=%s,coconut=%s' % scores)
-#       keys.append(result.key())
-#     params = {
-#         'model': 'ResultParent',
-#         'fetch_limit': '4'
-#         }
+  def tearDown(self):
+    db.delete(self.manager.all(keys_only=True).fetch(1000))
+    memcache.flush_all()
 
-#     self.count = 0
-#     def ResultParentGet(cls, *args, **kwds):
-#       logging.info('args: %s, kwds: %s', args, kwds)
-#       self.count += 1
-#       if self.count == 5:
-#         raise db.Timeout
-#       else:
-#         return self.old_result_parent_get(*args, **kwds)
-#     ResultParent.get = classmethod(ResultParentGet)
+  def testNoBrowsersGivesError(self):
+    params = {}
+    response = self.client.get('/admin/upload_category_browsers', params)
+    self.assertTrue('Must set "browsers"' in response.content)
+    self.assertEqual(500, response.status_code)
 
-#     response = self.client.get('/admin/data_dump', params)
-#     self.assertEqual(200, response.status_code)
-#     response_params = simplejson.loads(response.content)
-#     self.assertNotEqual(None, response_params['bookmark'])
-#     self.assertEqual(12, len(response_params['data'])) # 3 parents + 9 times
+  def testNoCategoryGivesError(self):
+    params = {
+        'version_level': 4,
+        'browsers': 'Firefox,IE',
+        }
+    response = self.client.get('/admin/upload_category_browsers', params)
+    self.assertEqual('Must set "category".', response.content)
+    self.assertEqual(500, response.status_code)
 
-#     del response_params['data']
-#     response = self.client.get('/admin/data_dump', response_params)
-#     self.assertEqual(200, response.status_code)
-#     response_params = simplejson.loads(response.content)
-#     self.assertEqual(None, response_params['bookmark'])
-#     self.assertEqual(8, len(response_params['data'])) # 2 parent + 6 times
+  def testBadVersionLevelGivesError(self):
+    params = {
+        'category': 'network',
+        'version_level': 4,
+        'browsers': 'Firefox,IE',
+        }
+    response = self.client.get('/admin/upload_category_browsers', params)
+    self.assertTrue('Version level' in response.content)
+    self.assertEqual(500, response.status_code)
 
-  # Exceptions:
-  #   Timeouts
-  #   - ResultParent keys (first time, after bookmark)
-  #   - ResultParent entity
-  #   - ResultTime enitities
-  #   Past time_limit
+  def testNoBrowsersGivesError(self):
+    params = {
+        'category': 'network',
+        'version_level': 0,
+        }
+    response = self.client.get('/admin/upload_category_browsers', params)
+    self.assertTrue('Must set "browsers"' in response.content)
+    self.assertEqual(500, response.status_code)
+
+  def testBasic(self):
+    params = {
+        'category': 'network',
+        'version_level': 0,
+        'browsers': 'IE,Firefox',
+        }
+    response = self.client.get('/admin/upload_category_browsers', params)
+    self.assertEqual('Success.', response.content)
+    self.assertEqual(200, response.status_code)
+    self.assertEqual(['Firefox', 'IE'], self.manager.GetBrowsers('network', 0))

@@ -55,12 +55,12 @@ class CountRankerTest(unittest.TestCase):
     self.assertEqual([0, 0, 2, 0, 1], ranker.counts)
     self.assertEqual((2, 3), ranker.GetMedianAndNumScores())
 
-  def testSetCounts(self):
+  def testSetValues(self):
     ranker = result_ranker.GetRanker(*self.ranker_params)
-    ranker.SetCounts([0, 3, 1, 3])
+    ranker.SetValues([0, 3, 1, 3], 7)
     ranker = result_ranker.GetRanker(*self.ranker_params)
     self.assertEqual((2, 7), ranker.GetMedianAndNumScores())
-    ranker.SetCounts([4, 3])
+    ranker.SetValues([4, 3], 7)
     ranker = result_ranker.GetRanker(*self.ranker_params)
     self.assertEqual((0, 7), ranker.GetMedianAndNumScores())
     ranker.Add(1)
@@ -107,9 +107,9 @@ class LastNRankerTest(unittest.TestCase):
     self.assertEqual([0, 500, 1000], ranker.scores)
     self.assertEqual((500, 3), ranker.GetMedianAndNumScores())
 
-  def testSetScores(self):
+  def testSetValues(self):
     ranker = result_ranker.GetRanker(*self.ranker_params)
-    ranker.SetScores([4, 4, 5, 5, 6], 10)
+    ranker.SetValues([4, 4, 5, 5, 6], 10)
     ranker = result_ranker.GetRanker(*self.ranker_params)
     self.assertEqual((5, 10), ranker.GetMedianAndNumScores())
     ranker.Add(4)
@@ -123,7 +123,7 @@ class LastNRankerTest(unittest.TestCase):
   def testDropLowScore(self):
     result_ranker.LastNRanker.MAX_NUM_SAMPLED_SCORES = 5
     ranker = result_ranker.GetRanker(*self.ranker_params)
-    ranker.SetScores([4, 4, 5, 5, 6], 15)
+    ranker.SetValues([4, 4, 5, 5, 6], 15)
     ranker.Add(5)
     ranker = result_ranker.GetRanker(*self.ranker_params)
     self.assertEqual([4, 5, 5, 5, 6], ranker.scores)
@@ -132,7 +132,7 @@ class LastNRankerTest(unittest.TestCase):
   def testDropHighScore(self):
     result_ranker.LastNRanker.MAX_NUM_SAMPLED_SCORES = 4
     ranker = result_ranker.GetRanker(*self.ranker_params)
-    ranker.SetScores([4, 4, 5, 5], 20)
+    ranker.SetValues([4, 4, 5, 5], 20)
     ranker.Add(4)
     ranker = result_ranker.GetRanker(*self.ranker_params)
     self.assertEqual([4, 4, 4, 5], ranker.scores)

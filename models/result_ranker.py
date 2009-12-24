@@ -61,7 +61,7 @@ class CountRanker(db.Model):
     self.counts[score] += 1
     self.put()
 
-  def SetCounts(self, counts):
+  def SetValues(self, counts, num_scores):
     self.counts = counts
     self.put()
 
@@ -101,7 +101,7 @@ class LastNRanker(db.Model):
     self.num_scores += 1
     self.put()
 
-  def SetScores(self, scores, num_scores):
+  def SetValues(self, scores, num_scores):
     self.scores = scores
     self.num_scores = num_scores
     self.put()

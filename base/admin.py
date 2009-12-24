@@ -27,6 +27,7 @@ import datetime
 import logging
 import os
 import time
+import traceback
 
 from google.appengine.ext import db
 
@@ -35,6 +36,7 @@ from categories import all_test_sets
 from base import decorators
 from base import manage_dirty
 from base import util
+from models import result_stats
 from models.result import ResultParent
 from models.result import ResultTime
 from models.user_agent import UserAgent
@@ -167,10 +169,10 @@ def WTF(request):
 @decorators.admin_required
 def DataDump(request):
   """This is used by bin/data_dump.py to replicate the datastore."""
-  model = request.GET.get('model')
-  key_prefix = request.GET.get('key_prefix', '')
-  keys_list = request.GET.get('keys')
-  time_limit = int(request.GET.get('time_limit', 3))
+  model = request.REQUEST.get('model')
+  key_prefix = request.REQUEST.get('key_prefix', '')
+  keys_list = request.REQUEST.get('keys')
+  time_limit = int(request.REQUEST.get('time_limit', 3))
 
   if keys_list:
     keys = ['%s%s' % (key_prefix, key) for key in keys_list.split(',')]
@@ -212,7 +214,7 @@ def DataDump(request):
         except db.Timeout:
           error = 'db.Timeout: ResultTime'
           break
-        data.append({
+        row_data = [{
             'model_class': 'ResultParent',
             'result_parent_key': result_parent_key,
             'category': p.category,
@@ -223,15 +225,23 @@ def DataDump(request):
             'created': p.created and p.created.isoformat() or None,
             'params_str': p.params_str,
             'loader_id': hasattr(p, 'loader_id') and p.loader_id or None,
-            })
+            }]
+        is_dirty = False
         for result_time in result_times:
-          data.append({
+          if result_time.dirty:
+            is_dirty = True
+            break
+          row_data.append({
               'model_class': 'ResultTime',
               'result_time_key': str(result_time.key()),
               'result_parent_key': str(result_parent_key),
               'test': result_time.test,
               'score': result_time.score,
               })
+        if is_dirty:
+          data.append({'dirty_key': result_parent_key,})
+        else:
+          data.extend(row_data)
     elif model == 'UserAgent':
       try:
         user_agents = UserAgent.get(keys)
@@ -276,11 +286,11 @@ def DataDump(request):
 @decorators.admin_required
 def DataDumpKeys(request):
   """This is used by bin/data_dump.py to get ResultParent keys."""
-  bookmark = request.GET.get('bookmark')
-  model_name = request.GET.get('model')
-  count = int(request.GET.get('count', 0))
-  fetch_limit = int(request.GET.get('fetch_limit', 999))
-  created_str = request.GET.get('created', 0)
+  bookmark = request.REQUEST.get('bookmark')
+  model_name = request.REQUEST.get('model')
+  count = int(request.REQUEST.get('count', 0))
+  fetch_limit = int(request.REQUEST.get('fetch_limit', 999))
+  created_str = request.REQUEST.get('created', 0)
   created = None
   if created_str:
     created = datetime.datetime.strptime(created_str, '%Y-%m-%d %H:%M:%S')
@@ -309,3 +319,80 @@ def DataDumpKeys(request):
     response_params['created'] = created_str
   return http.HttpResponse(content=simplejson.dumps(response_params),
                            content_type='application/json')
+
+@decorators.admin_required
+def UploadCategoryBrowsers(request):
+  """Upload browser lists for each category and version level."""
+  category = request.REQUEST.get('category')
+  version_level = request.REQUEST.get('version_level')
+  browsers_str = request.REQUEST.get('browsers')
+
+  if not category:
+    return http.HttpResponseServerError(
+        'Must set "category".')
+  if not version_level.isdigit() or int(version_level) not in range(4):
+    return http.HttpResponseServerError(
+        'Version level must be an integer 0..3.')
+  if not browsers_str:
+    return http.HttpResponseServerError(
+        'Must set "browsers" (comma-separated list).')
+
+  try:
+    version_level = int(version_level)
+    browsers = browsers_str.split(',')
+    result_stats.CategoryBrowserManager.SetBrowsers(
+        category, version_level, browsers)
+    return http.HttpResponse('Success.')
+  except:
+    error = traceback.format_exc()
+    return http.HttpResponseServerError(error)
+
+
+@decorators.admin_required
+def UpdateStatsCache(request):
+  """Load rankers into memcache.
+  TODO: finish writing this
+  """
+  category = request.REQUEST.get('category')
+  browsers_str = request.REQUEST.get('browsers')
+  time_limit = int(request.REQUEST.get('time_limit', 3))
+
+  if not category:
+    return http.HttpResponseServerError(
+        'Must set "category".')
+  if not version_level.isdigit() or int(version_level) not in range(4):
+    return http.HttpResponseServerError(
+        'Version level must be an integer 0..3.')
+  if not browsers_str:
+    return http.HttpResponseServerError(
+        'Must set "browsers" (comma-separated list).')
+
+  start_time = time.clock()
+
+  try:
+    test_set = all_test_sets.GetTestSet(category)
+
+    browsers = browsers_str.split(',')
+    num_per_batch = min(1, int(120 / len(test_set.tests)))
+    # TODO: grab browsers in batches
+    message = None
+    updated_rankers = set()
+    for browser in browsers:
+      if time.clock() - start_time > time_limit:
+        message = 'Over time limit'
+        break
+      try:
+        result_stats.CategoryStatsManager.UpdateStatsCache(category, [browser])
+        updated_stats.add((category, browser))
+      except db.Timeout:
+        pass
+
+    response_params = {
+        'updated_rankers': sorted(updated_rankers),
+        }
+    if message:
+      response_params['message'] = message
+      return http.HttpResponse(simplejson.dumps(response_params))
+  except:
+    error = traceback.format_exc()
+    return http.HttpResponseServerError(error)
