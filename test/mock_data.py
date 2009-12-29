@@ -40,7 +40,8 @@ def GetUserAgentString(browser):
                  'Trident/4.0; .NET CLR 2.0.50727; .NET CLR 1.1.4322; '
                  '.NET CLR 3.0.04506.648; .NET CLR 3.5.21022)'),
       'Opera 9.70': ('Opera/9.70 (Linux ppc64 ; U; en) Presto/2.2.1'),
-      'Opera 9.50': ('Opera/9.50 (J2ME/MIDP; Opera Mini/4.0.10031/298; U; en)'),
+      'Opera Mini 4.0.10031': ('Opera/9.50 (J2ME/MIDP; '
+                               'Opera Mini/4.0.10031/298; U; en)'),
       }
   return browser_user_agents[browser]
 

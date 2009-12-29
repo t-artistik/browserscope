@@ -80,7 +80,7 @@ class CategoryBrowserManager(db.Model):
     ua_browsers = user_agent.get_string_list()
     max_ua_browsers_index = len(ua_browsers) - 1
     for version_level, key_name in enumerate(key_names):
-      browser = ua_browsers[min(max_ua_browsers_index - 1, version_level)]
+      browser = ua_browsers[min(max_ua_browsers_index, version_level)]
       if browser not in level_browsers.get(key_name, []):
         browser_key_names.append((browser, key_name))
     managers = cls.get_by_key_name([x[1] for x in browser_key_names])
@@ -131,7 +131,8 @@ class CategoryBrowserManager(db.Model):
     """
     filtered_browsers = [
         browser for browser in cls.GetBrowsers(category, version_level=3)
-        if browser.find(filter) != -1]
+        if (browser.startswith(filter) and
+            (filter != 'Opera' or not browser.startswith('Opera Mini')))]
     return filtered_browsers
 
   @classmethod
@@ -254,10 +255,16 @@ class CategoryStatsManager(object):
   @classmethod
   def UpdateStatsCache(cls, category, browsers):
     test_set = all_test_sets.GetTestSet(category)
-    ua_stats = {}
-    for browser in browsers:
-      medians, num_scores = test_set.GetMediansAndNumScores(browser)
-      ua_stats[browser] = test_set.GetStats(medians, num_scores)
+    browser_scores = dict((browser, set.GetMediansAndNumScores(browser))
+                          for browser in browsers)
+    cls.UpdateStatsCacheWithScores(category, browser_scores)
+
+  @classmethod
+  def UpdateStatsCacheWithScores(cls, category, browser_scores):
+    test_set = all_test_sets.GetTestSet(category)
+    ua_stats = dict(
+        (browser, test_set.GetStats(medians, num_scores))
+        for browser, (medians, num_scores) in browser_scores.items())
     memcache.set_multi(ua_stats, **cls.MemcacheParams(category))
 
   @classmethod

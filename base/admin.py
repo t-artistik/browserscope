@@ -278,7 +278,6 @@ def DataDump(request):
     error = traceback.format_exc()
     logging.info("Uh-oh: %s", error)
     return http.HttpResponse('bailing: %s' % error)
-  logging.info('DataDump: data=%s', response_params)
   return http.HttpResponse(content=simplejson.dumps(response_params),
                            content_type='application/json')
 
@@ -355,7 +354,6 @@ def UpdateStatsCache(request):
   """
   category = request.REQUEST.get('category')
   browsers_str = request.REQUEST.get('browsers')
-  time_limit = int(request.REQUEST.get('time_limit', 3))
 
   if not category:
     return http.HttpResponseServerError(

@@ -158,6 +158,10 @@ class CategoryBrowserManagerFilterTest(unittest.TestCase):
         self.category, mock_data.GetUserAgent('Firefox 3.1.7'))
     result_stats.CategoryBrowserManager.AddUserAgent(
         self.category, mock_data.GetUserAgent('IE 7.0'))
+    result_stats.CategoryBrowserManager.AddUserAgent(
+        self.category, mock_data.GetUserAgent('Opera 9.70'))
+    result_stats.CategoryBrowserManager.AddUserAgent(
+        self.category, mock_data.GetUserAgent('Opera Mini 4.0.10031'))
     memcache.flush_all()
 
   def tearDown(self):
@@ -178,6 +182,11 @@ class CategoryBrowserManagerFilterTest(unittest.TestCase):
   def testGetFilteredBrowsersMinorVersion(self):
     expected_browsers = ['Firefox 3.1.7', 'Firefox 3.1.8']
     browsers = self.cls.GetFilteredBrowsers(self.category, 'Firefox 3.1')
+    self.assertEqual(expected_browsers, browsers)
+
+  def testGetFilteredBrowsersOperaSkipsOperaMini(self):
+    expected_browsers = ['Opera 9.70']  # Opera Mini 4.0.10031 is excluded
+    browsers = self.cls.GetFilteredBrowsers(self.category, 'Opera')
     self.assertEqual(expected_browsers, browsers)
 
 
