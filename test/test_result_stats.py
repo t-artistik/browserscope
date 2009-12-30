@@ -26,7 +26,7 @@ from google.appengine.api import memcache
 from google.appengine.ext import db
 from models import result_stats
 from models.result import ResultParent
-
+from third_party import mox
 import mock_data
 
 
@@ -253,3 +253,36 @@ class CategoryStatsManagerTest(unittest.TestCase):
         }
     self.assertEqual(level_3_stats, result_stats.CategoryStatsManager.GetStats(
         test_set, browsers=('Firefox 3.0.7', 'Firefox 3.5')))
+
+
+class UpdateStatsCacheTest(unittest.TestCase):
+
+  MANAGER_QUERY = result_stats.CategoryBrowserManager.all(keys_only=True)
+
+  def setUp(self):
+    self.mox = mox.Mox()
+    self.test_set = mock_data.MockTestSet()
+    db.delete(self.MANAGER_QUERY.fetch(1000))
+
+  def tearDown(self):
+    db.delete(self.MANAGER_QUERY.fetch(1000))
+    self.mox.UnsetStubs()
+
+  def testBasic(self):
+    category = self.test_set.category
+    cls = result_stats.CategoryStatsManager
+    browsers = ['Earth', 'Wind', 'Fire']
+    self.mox.StubOutWithMock(self.test_set, 'GetMediansAndNumScores')
+    self.mox.StubOutWithMock(self.test_set, 'GetStats')
+    self.test_set.GetMediansAndNumScores('Earth').AndReturn(('m1', 'n1'))
+    self.test_set.GetStats('m1', 'n1').AndReturn('s1')
+    self.test_set.GetMediansAndNumScores('Wind').AndReturn(('m2', 'n2'))
+    self.test_set.GetStats('m2', 'n2').AndReturn('s2')
+    self.test_set.GetMediansAndNumScores('Fire').AndReturn(('m3', 'n3'))
+    self.test_set.GetStats('m3', 'n3').AndReturn('s3')
+    self.mox.ReplayAll()
+    cls.UpdateStatsCache(category, browsers)
+    self.mox.VerifyAll()
+    ua_stats = memcache.get_multi(browsers, **cls.MemcacheParams(category))
+    self.assertEqual({'Earth': 's1', 'Wind': 's2', 'Fire': 's3'},
+                     ua_stats)

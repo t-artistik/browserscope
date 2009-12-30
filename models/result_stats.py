@@ -120,6 +120,21 @@ class CategoryBrowserManager(db.Model):
     return browsers
 
   @classmethod
+  def GetAllBrowsers(cls, category):
+    """Get all the browsers for a category.
+
+    Args:
+      category: a category string like 'network' or 'reflow'.
+    Returns:
+      ('Firefox', 'Firefox 3', 'Firefox 3.1', 'Safari', 'Safari 4', ...)
+      # Order is undefined
+    """
+    all_browsers = set()
+    for version_level in range(4):
+      all_browsers.update(cls.GetBrowsers(category, version_level))
+    return list(all_browsers)
+
+  @classmethod
   def GetFilteredBrowsers(cls, category, filter):
     """Get browsers based on a filter (prefixes for now).
 
@@ -255,16 +270,10 @@ class CategoryStatsManager(object):
   @classmethod
   def UpdateStatsCache(cls, category, browsers):
     test_set = all_test_sets.GetTestSet(category)
-    browser_scores = dict((browser, set.GetMediansAndNumScores(browser))
-                          for browser in browsers)
-    cls.UpdateStatsCacheWithScores(category, browser_scores)
-
-  @classmethod
-  def UpdateStatsCacheWithScores(cls, category, browser_scores):
-    test_set = all_test_sets.GetTestSet(category)
-    ua_stats = dict(
-        (browser, test_set.GetStats(medians, num_scores))
-        for browser, (medians, num_scores) in browser_scores.items())
+    ua_stats = {}
+    for browser in browsers:
+      medians, num_scores = test_set.GetMediansAndNumScores(browser)
+      ua_stats[browser] = test_set.GetStats(medians, num_scores)
     memcache.set_multi(ua_stats, **cls.MemcacheParams(category))
 
   @classmethod
@@ -279,6 +288,7 @@ class CategoryStatsManager(object):
 
 
 def UpdateCategory(category, user_agent):
+  logging.info('result.stats.UpdateCategory')
   CategoryBrowserManager.AddUserAgent(category, user_agent)
   CategoryStatsManager.UpdateStatsCache(category, user_agent.get_string_list())
 

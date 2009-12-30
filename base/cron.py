@@ -19,6 +19,8 @@
 __author__ = 'elsigh@google.com (Lindsey Simon)'
 
 
+import time
+
 from google.appengine.api import memcache
 from google.appengine.ext import db
 
@@ -37,6 +39,7 @@ import settings
 def UserAgentGroup(request):
   category = request.REQUEST.get('category')
   user_agent_key = request.REQUEST.get('user_agent_key')
+  logging.info('cron.UserAgentGroup')
   if not category:
     return http.HttpResponse('No category')
   if (category not in settings.CATEGORIES and

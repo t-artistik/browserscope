@@ -337,14 +337,21 @@ class DataDumpRpcServer(object):
   def UploadRankers(self, rankers):
     ranker_batch = {}
     num_rankers = len(rankers)
-    for ranker_key, ranker in rankers.items():
+    ranker_keys = rankers.keys()
+    ranker_keys.sort()
+    category_browser_num_tests = {}
+    for category, browser, test_key in ranker_keys:
+      category_browser_num_tests.setdefault((category, browser), 0)
+      category_browser_num_tests[category, browser] += 1
+    for ranker_key in ranker_keys:
+      ranker = rankers[ranker_key]
       if len(ranker_batch) < MAX_RANKERS_UPLOADED:
         ranker_batch[ranker_key] = ranker
       else:
         logging.info('Rankers to update: %s', num_rankers)
         data = []
         params_str = None
-        for (category, test_key, browser), ranker in ranker_batch.items():
+        for (category, browser, test_key), ranker in ranker_batch.items():
           data.append([
               category,
               test_key,
@@ -360,8 +367,16 @@ class DataDumpRpcServer(object):
         response_params = self.Send('/admin/rankers/upload', params)
         updated_rankers = response_params['updated_rankers']
         num_rankers -= len(updated_rankers)
+        updated_category_browsers = {}
         for category, test_key, browser, params_str in updated_rankers:
-          del ranker_batch[(category, test_key, browser)]
+          del ranker_batch[(category, browser, test_key)]
+          category_browser_num_tests[(category, browser)] -= 1
+          if category_browser_num_tests[(category, browser)] == 0:
+            updated_category_browsers.setdefault(category, []).append(browser)
+        for category, browsers in updated_category_browsers.items():
+          self.Send('/admin/update_stats_cache',
+                    {'category': category, 'browsers': ','.join(browsers)},
+                    method='GET', json_response=False)
 
   def UploadCategoryBrowsers(self, db):
     category_browsers = local_scores.GetCategoryBrowsers(db)
@@ -376,7 +391,7 @@ class DataDumpRpcServer(object):
 def ParseArgs(argv):
   options, args = getopt.getopt(
       argv[1:],
-      'h:e:f:r:c',
+      'h:e:f:rc',
       ['host=', 'email=', 'mysql_default_file=',
        'release', 'category_browsers_only'])
   host = None
@@ -391,8 +406,6 @@ def ParseArgs(argv):
       gae_user = option_value
     elif option_key in ('-f', '--mysql_default_file'):
       mysql_default_file = option_value
-    elif option_key in ('-r', '--release'):
-      is_release = True
     elif option_key in ('-r', '--release'):
       is_release = True
     elif option_key in ('-c', '--category_browsers_only'):

@@ -39,7 +39,6 @@ class CachedRanker(object):
         key_names, namespace=cls.MEMCACHE_NAMESPACE)
     rankers = dict((k, cls.FromString(k, v))
                    for k, v in serialized_rankers.items())
-    logging.info('RANKERS: %s', rankers)
     if not use_memcache_only:
       db_key_names = [k for k in key_names if k not in rankers]
       if db_key_names:

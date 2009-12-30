@@ -34,7 +34,7 @@ from models import result_stats
 from models.result import ResultParent
 from models.result import ResultTime
 from models.user_agent import UserAgent
-#from models.user_agent import UserAgentGroup
+from third_party import mox
 
 from base import admin
 
@@ -231,3 +231,67 @@ class TestUploadCategoryBrowsers(unittest.TestCase):
     self.assertEqual('Success.', response.content)
     self.assertEqual(200, response.status_code)
     self.assertEqual(['Firefox', 'IE'], self.manager.GetBrowsers('network', 0))
+
+
+class TestUpdateStatsCache(unittest.TestCase):
+  def setUp(self):
+    self.client = Client()
+    self.mox = mox.Mox()
+    self.manager = result_stats.CategoryStatsManager
+
+  def tearDown(self):
+    self.mox.UnsetStubs()
+    memcache.flush_all()
+
+  def testNoCategoryGivesError(self):
+    params = {
+        'browsers': 'Firefox,IE',
+        }
+    response = self.client.get('/admin/update_stats_cache', params)
+    self.assertEqual('Must set "category".', response.content)
+    self.assertEqual(500, response.status_code)
+
+  def testNoBrowsersGivesError(self):
+    params = {
+        'category': 'network',
+        }
+    response = self.client.get('/admin/update_stats_cache', params)
+    self.assertTrue('Must set "browsers"' in response.content)
+    self.assertEqual(500, response.status_code)
+
+  def testBasic(self):
+    self.mox.StubOutWithMock(self.manager, 'UpdateStatsCache')
+    self.manager.UpdateStatsCache('network', ['IE', 'Firefox'])
+    params = {
+        'category': 'network',
+        'browsers': 'IE,Firefox',
+        }
+    self.mox.ReplayAll()
+    response = self.client.get('/admin/update_stats_cache', params)
+    self.mox.VerifyAll()
+    self.assertEqual('Success.', response.content)
+    self.assertEqual(200, response.status_code)
+
+  def testUpdateAllStatsCache(self):
+    test_set_1 = mock_data.MockTestSet(category='foo')
+    test_set_2 = mock_data.MockTestSet(category='bar')
+    category_browsers = {
+        test_set_1: ('Firefox 2.5.1', 'Firefox 3.0.7', 'Firefox 3.1.7',
+                     'Firefox 3.1.8', 'Firefox 3.5', 'IE 7.0'),
+        test_set_2: ('Firefox 2.5.1', 'Firefox 3.5', 'IE 7.0'),
+        }
+    for test_set, browsers in category_browsers.items():
+      for browser in browsers:
+        ua = mock_data.GetUserAgentString(browser)
+        result = ResultParent.AddResult(
+            test_set, '1.2.2.5', ua, 'apple=1,banana=1,coconut=1')
+        # Not sure why this is not called during AddResult.
+        # Looks like a tasks gets added, but the function is not called.
+        result_stats.UpdateCategory(test_set.category, UserAgent.factory(ua))
+
+    self.mox.StubOutWithMock(admin, 'UpdateStatsCache')
+    self.mox.ReplayAll()
+    params = {'tests_per_batch': 3, 'categories': 'foo,bar'}
+    response = self.client.get('/admin/update_all_stats_cache',
+                               params)
+    self.mox.VerifyAll()

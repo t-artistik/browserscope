@@ -199,10 +199,10 @@ def CreateRanker(test, browser, params_str=None):
 
 
 def DumpRankers(fh, rankers):
-  for (category, test, browser), ranker in sorted(rankers.items()):
+  for (category, browser, test_key), ranker in sorted(rankers.items()):
     fields = [
         category,
-        test,
+        test_key,
         browser,
         ranker.__class__.__name__,
         ]
@@ -237,7 +237,7 @@ def BuildRankers(db):
     if parts != last_parts:
       browsers = UserAgent.parts_to_string_list(family, v1, v2, v3)
     for browser in browsers:
-      ranker_key = category, test_key, browser
+      ranker_key = category, browser, test_key
       if not ranker_key in rankers:
         rankers[ranker_key] = CreateRanker(test, browser)
       ranker = rankers[ranker_key]

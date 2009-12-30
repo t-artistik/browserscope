@@ -66,8 +66,7 @@ class MockTest(test_set_base.TestBase):
 
 
 class MockTestSet(test_set_base.TestSet):
-  def __init__(self, params=None):
-    category = 'mockTestSet'
+  def __init__(self, category='mockTestSet', params=None):
     tests = (
         MockTest('apple', min_value=0, max_value=1),
         MockTest('banana', min_value=0, max_value=100),

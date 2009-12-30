@@ -29,6 +29,7 @@ import os
 import time
 import traceback
 
+from google.appengine.api.labs import taskqueue
 from google.appengine.ext import db
 
 import settings
@@ -347,50 +348,46 @@ def UploadCategoryBrowsers(request):
     return http.HttpResponseServerError(error)
 
 
-@decorators.admin_required
 def UpdateStatsCache(request):
-  """Load rankers into memcache.
-  TODO: finish writing this
-  """
+  """Load rankers into memcache."""
   category = request.REQUEST.get('category')
   browsers_str = request.REQUEST.get('browsers')
 
   if not category:
-    return http.HttpResponseServerError(
-        'Must set "category".')
-  if not version_level.isdigit() or int(version_level) not in range(4):
-    return http.HttpResponseServerError(
-        'Version level must be an integer 0..3.')
+    return http.HttpResponseServerError('Must set "category".')
   if not browsers_str:
-    return http.HttpResponseServerError(
-        'Must set "browsers" (comma-separated list).')
-
-  start_time = time.clock()
-
+    return http.HttpResponseServerError('Must set "browsers" '
+                                        '(comma-separated list).')
   try:
-    test_set = all_test_sets.GetTestSet(category)
-
     browsers = browsers_str.split(',')
-    num_per_batch = min(1, int(120 / len(test_set.tests)))
-    # TODO: grab browsers in batches
-    message = None
-    updated_rankers = set()
-    for browser in browsers:
-      if time.clock() - start_time > time_limit:
-        message = 'Over time limit'
-        break
-      try:
-        result_stats.CategoryStatsManager.UpdateStatsCache(category, [browser])
-        updated_stats.add((category, browser))
-      except db.Timeout:
-        pass
-
-    response_params = {
-        'updated_rankers': sorted(updated_rankers),
-        }
-    if message:
-      response_params['message'] = message
-      return http.HttpResponse(simplejson.dumps(response_params))
+    result_stats.CategoryStatsManager.UpdateStatsCache(category, browsers)
   except:
     error = traceback.format_exc()
     return http.HttpResponseServerError(error)
+  return http.HttpResponse('Success.')
+
+
+@decorators.admin_required
+def UpdateAllStatsCache(request):
+  categories_str = request.REQUEST.get('categories')
+  if categories_str:
+    categories = categories_str.split(',')
+  else:
+    categories = settings.CATEGORIES
+  tests_per_batch = int(request.REQUEST.get('test_per_batch', 1200))
+  num_tasks = 0
+  for category in categories:
+    logging.info('update all: %s', category)
+    browsers = result_stats.CategoryBrowserManager.GetAllBrowsers(category)
+    logging.info('browsers: %s', browsers)
+    test_set = all_test_sets.GetTestSet(category)
+    batch_size = tests_per_batch / len(test_set.tests)
+    logging.info('batch_size: %s', batch_size)
+    for i in range(0, len(browsers), batch_size):
+      params = {
+          'category': category,
+          'browsers': ','.join(browsers[i:i+batch_size])
+          }
+      taskqueue.add(url='/admin/update_stats_cache', params=params)
+      num_tasks += 1
+  return http.HttpResponse('Queued stats cache update: num_tasks=%s' % num_tasks)
