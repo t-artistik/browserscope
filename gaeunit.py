@@ -58,13 +58,15 @@ __copyright__= "Copyright (c) 2008-2009, George Lei and Steven R. Farley"
 __license__ = "BSD"
 __url__ = "http://code.google.com/p/gaeunit"
 
-import sys
-import os
-import unittest
-import time
-import logging
+import base64
 import cgi
+import logging
+import os
 import re
+import sys
+import time
+import unittest
+import urlparse
 import django.utils.simplejson
 
 # Must set this env var before importing any part of Django
@@ -437,16 +439,26 @@ class ExecuteImmediatelyTaskQueueService(taskqueue_stub.TaskQueueServiceStub):
                 c = client.Client()
                 if task['method'] == 'GET':
                     try:
-                        logging.info("Execute task immediately: GET %s", task['url'])
-                        c.get(task['url'], content_type=headers['Content-Type'])
+                        # Only Django 1.1 or greater can handle a query string.
+                        url_parts = list(urlparse.urlsplit(task['url']))
+                        query = url_parts[3]
+                        query_data = {}
+                        if query:
+                            query_data = dict(
+                                kv.split('=') for kv in url_parts[3].split('&'))
+                        url_parts[3] = ''
+                        url = urlparse.urlunsplit(url_parts)
+                        logging.info("Execute task immediately: GET %s, query=%s", url, query_data)
+                        c.get(url, query_data, content_type=headers['Content-Type'])
                     except:
                         import traceback
                         error = traceback.format_exc()
                         print error
                         _log_error(error)
                 elif task['method'] == 'POST':
-                    logging.info("Execute task immediately: POST %s, body=%s", task['url'], task['body'])
-                    c.post(task['url'], data=task['body'], content_type=task['headers']['Content-Type'])
+                    body = base64.b64decode(task['body'])
+                    logging.info("Execute task immediately: POST %s, body=%s", task['url'], body)
+                    c.post(task['url'], data=body, content_type=task['headers']['Content-Type'])
                 else:
                     raise NotImplementedError
             self.FlushQueue(queue_name)

@@ -148,9 +148,10 @@ class ResultParent(db.Expando):
         result_time.dirty = False
       db.put(dirty_result_times)
       if is_stats_update_needed and dirty_query.IsResultParentDone():
-        logging.info('Scheduling CategoryUpdate.')
-        result_stats.ScheduleCategoryUpdate(result_parent.category,
-                                            result_parent.user_agent)
+        logging.info('Scheduling CategoryUpdate(%s, %s)',
+                     result_parent.category, result_parent.user_agent.pretty())
+        result_stats.ScheduleCategoryUpdate(
+            result_parent.category, result_parent.user_agent)
 
   def UpdateStatsNonProduction(self):
     """This is not efficient enough to be used in prod."""

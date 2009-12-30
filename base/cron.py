@@ -18,7 +18,7 @@
 
 __author__ = 'elsigh@google.com (Lindsey Simon)'
 
-
+import logging
 import time
 
 from google.appengine.api import memcache
@@ -39,19 +39,22 @@ import settings
 def UserAgentGroup(request):
   category = request.REQUEST.get('category')
   user_agent_key = request.REQUEST.get('user_agent_key')
-  logging.info('cron.UserAgentGroup')
   if not category:
+    logging.info('cron.UserAgentGroup: No category')
     return http.HttpResponse('No category')
-  if (category not in settings.CATEGORIES and
-      category not in settings.CATEGORIES_BETA):
+  if not all_test_sets.HasTestSet(category):
+    logging.info('cron.UserAgentGroup: Bad category: %s', category)
     return http.HttpResponse('Bad category: %s' % category)
   if not user_agent_key:
+    logging.info('cron.UserAgentGroup: No key')
     return http.HttpResponse('No key')
   try:
     user_agent = UserAgent.get(db.Key(user_agent_key))
   except db.BadKeyError:
+    logging.info('cron.UserAgentGroup: Invalid UserAgent key: %s', user_agent_key)
     return http.HttpResponse('Invalid UserAgent key: %s' % user_agent_key)
   if user_agent:
+    logging.info('cron.UserAgentGroup: UpdateCategory(%s, %s)', category, user_agent)
     result_stats.UpdateCategory(category, user_agent)
     return http.HttpResponse('Done with UserAgent key=%s' % user_agent_key)
   else:

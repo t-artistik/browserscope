@@ -57,7 +57,7 @@ urlpatterns = patterns('',
   (r'^cron/update_recent_tests$', 'base.cron.UpdateRecentTests'),
 
   (r'^_ah/queue/update-dirty', 'base.manage_dirty.UpdateDirty'),
-  (r'^_ah/queue/user-agent-group$', 'base.cron.UserAgentGroup'),
+  (r'^_ah/queue/user-agent-group', 'base.cron.UserAgentGroup'),
   (r'^_ah/queue/recent-tests$', 'base.cron.UpdateRecentTests'),
 
   # GViz Data source

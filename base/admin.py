@@ -28,6 +28,7 @@ import logging
 import os
 import time
 import traceback
+import urllib
 
 from google.appengine.api.labs import taskqueue
 from google.appengine.ext import db
@@ -352,10 +353,12 @@ def UpdateStatsCache(request):
   """Load rankers into memcache."""
   category = request.REQUEST.get('category')
   browsers_str = request.REQUEST.get('browsers')
-
+  logging.info('UpdateStatsCache: category=%s, browsers=%s', category, browsers_str)
   if not category:
+    logging.info('UpdateStatsCache: Must set category')
     return http.HttpResponseServerError('Must set "category".')
   if not browsers_str:
+    logging.info('UpdateStatsCache: Must set browsers.')
     return http.HttpResponseServerError('Must set "browsers" '
                                         '(comma-separated list).')
   try:
@@ -369,12 +372,12 @@ def UpdateStatsCache(request):
 
 @decorators.admin_required
 def UpdateAllStatsCache(request):
+  tests_per_batch = int(request.REQUEST.get('tests_per_batch', 1200))
   categories_str = request.REQUEST.get('categories')
   if categories_str:
     categories = categories_str.split(',')
   else:
     categories = settings.CATEGORIES
-  tests_per_batch = int(request.REQUEST.get('test_per_batch', 1200))
   num_tasks = 0
   for category in categories:
     logging.info('update all: %s', category)
@@ -386,7 +389,7 @@ def UpdateAllStatsCache(request):
     for i in range(0, len(browsers), batch_size):
       params = {
           'category': category,
-          'browsers': ','.join(browsers[i:i+batch_size])
+          'browsers': ','.join(sorted(browsers[i:i+batch_size]))
           }
       taskqueue.add(url='/admin/update_stats_cache', params=params)
       num_tasks += 1

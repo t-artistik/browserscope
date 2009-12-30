@@ -285,13 +285,24 @@ class TestUpdateStatsCache(unittest.TestCase):
         ua = mock_data.GetUserAgentString(browser)
         result = ResultParent.AddResult(
             test_set, '1.2.2.5', ua, 'apple=1,banana=1,coconut=1')
-        # Not sure why this is not called during AddResult.
-        # Looks like a tasks gets added, but the function is not called.
-        result_stats.UpdateCategory(test_set.category, UserAgent.factory(ua))
 
-    self.mox.StubOutWithMock(admin, 'UpdateStatsCache')
-    self.mox.ReplayAll()
-    params = {'tests_per_batch': 3, 'categories': 'foo,bar'}
-    response = self.client.get('/admin/update_all_stats_cache',
-                               params)
-    self.mox.VerifyAll()
+    params = {'tests_per_batch': 20, 'categories': 'foo,bar'}
+    response = self.client.get('/admin/update_all_stats_cache', params)
+    # Instead of checking actual stats, I tried to mock out UpdateStatsCache
+    # as is done in testBasic. However, it did not work for some unknown reason.
+    # it would not verify the calls. VerifyAll succeeded no matter what I called
+    # or did not call. Grrr.
+    expected_stats = {
+        'summary_display': '3',
+        'total_runs': 5,
+        'summary_score': 14,
+        'results': {
+            'apple': {'score': 10, 'raw_score': 1, 'display': 'yes'},
+            'banana': {'score': 2, 'raw_score': 1, 'display': 'd:2'},
+            'coconut': {'score': 2, 'raw_score': 1, 'display': 'd:2'},
+            }
+        }
+    self.assertEqual(
+        expected_stats,
+        memcache.get('Firefox',
+                     **result_stats.CategoryStatsManager.MemcacheParams('foo')))

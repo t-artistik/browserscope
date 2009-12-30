@@ -39,13 +39,13 @@ class TestCategories(unittest.TestCase):
     self.assertEqual(settings.CATEGORIES,
                      [x.category for x in all_test_sets.GetTestSets()])
 
-  # TODO(slamm): Re-enable? This test was failing for "Selectors API" w/
-  # AssertionError: 'Css selectors' != 'CSS Selectors'
-  #def testCategoryNamesCapitalized(self):
-    #for test_set in all_test_sets.GetTestSets():
+  def testCategoryNamesCapitalized(self):
+    for test_set in all_test_sets.GetTestSets():
       # Make sure category name is a string and that it is capitalized.
-      #self.assertEqual(test_set.category_name.capitalize(),
-      #                 test_set.category_name)
+      self.assertEqual(
+          ' '.join(['%s%s' % (x[0].capitalize(), x[1:])
+                    for x in test_set.category_name.split(' ')]),
+          test_set.category_name)
 
   def testTestsDefinedWithRequireAttributes(self):
     for test_set in all_test_sets.GetTestSets():
@@ -82,8 +82,8 @@ class TestCanBeacon(unittest.TestCase):
     self.client = Client()
 
   def testBeacon(self):
-    for category in settings.CATEGORIES:
-      test_set = all_test_sets.GetTestSet(category)
+    for test_set in all_test_sets.GetTestSets():
+      category = test_set.category
       csrf_token = self.client.get('/get_csrf').content
       # Constructs a reasonably random result set
       results = [

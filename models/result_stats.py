@@ -269,6 +269,7 @@ class CategoryStatsManager(object):
 
   @classmethod
   def UpdateStatsCache(cls, category, browsers):
+    logging.info('UpdateStatsCache: category=%s, browsers=%s', category, browsers)
     test_set = all_test_sets.GetTestSet(category)
     ua_stats = {}
     for browser in browsers:
