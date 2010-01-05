@@ -32,29 +32,29 @@ class ReflowTestTest(unittest.TestCase):
     self.test_set = test_set.TEST_SET
 
   def testScoreAndDisplayValueNone(self):
-    self.assertEqual((9, ''), self.test_set.GetTestScoreAndDisplayValue(
+    self.assertEqual((90, ''), self.test_set.GetTestScoreAndDisplayValue(
         'testVisibility', {}))
-    self.assertEqual((9, ''), self.test_set.GetTestScoreAndDisplayValue(
+    self.assertEqual((90, ''), self.test_set.GetTestScoreAndDisplayValue(
         'testVisibility', {'testVisibility': None}))
-    self.assertEqual((9, ''), self.test_set.GetTestScoreAndDisplayValue(
+    self.assertEqual((90, ''), self.test_set.GetTestScoreAndDisplayValue(
         'testVisibility', {'testVisibility': ''}))
 
   def testScoreAndDisplayValueZero(self):
-    self.assertEqual((10, '0X'), self.test_set.GetTestScoreAndDisplayValue(
+    self.assertEqual((100, '0X'), self.test_set.GetTestScoreAndDisplayValue(
         'testVisibility', {'testVisibility': 0}))
 
   def testScoreAndDisplayValueVisibility(self):
-    self.assertEqual((10, '¼X'), self.test_set.GetTestScoreAndDisplayValue(
+    self.assertEqual((97, '¼X'), self.test_set.GetTestScoreAndDisplayValue(
         'testVisibility', {'testVisibility': 20}))
-    self.assertEqual((10, '½X'), self.test_set.GetTestScoreAndDisplayValue(
+    self.assertEqual((95, '½X'), self.test_set.GetTestScoreAndDisplayValue(
         'testVisibility', {'testVisibility': 40}))
-    self.assertEqual((9, '1X'), self.test_set.GetTestScoreAndDisplayValue(
+    self.assertEqual((90, '1X'), self.test_set.GetTestScoreAndDisplayValue(
         'testVisibility', {'testVisibility': 100}))
-    self.assertEqual((8, '2X'), self.test_set.GetTestScoreAndDisplayValue(
+    self.assertEqual((80, '2X'), self.test_set.GetTestScoreAndDisplayValue(
         'testVisibility', {'testVisibility': 150}))
-    self.assertEqual((8, '2X'), self.test_set.GetTestScoreAndDisplayValue(
+    self.assertEqual((80, '2X'), self.test_set.GetTestScoreAndDisplayValue(
         'testVisibility', {'testVisibility': 180}))
-    self.assertEqual((6, '3X'), self.test_set.GetTestScoreAndDisplayValue(
+    self.assertEqual((60, '3X'), self.test_set.GetTestScoreAndDisplayValue(
         'testVisibility', {'testVisibility': 200}))
 
   def testAdjustResults(self):

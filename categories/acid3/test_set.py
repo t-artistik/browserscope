@@ -56,19 +56,19 @@ _TESTS = (
 class Acid3TestSet(test_set_base.TestSet):
 
   def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
-    """Get a normalized score (1 to 10) and a value to output to the display.
+    """Get a normalized score (0 to 100) and a value to output to the display.
 
     Args:
       test_key: a key for a test_set test.
       raw_scores: a dict of raw_scores indexed by key.
     Returns:
       score, display_value
-          # score is an integer in 1 to 10.
+          # score is an integer in 0 to 100.
           # display_value is the text for the cell.
     """
     raw_score = raw_scores.get(test_key, 0)
     if raw_score:
-      return self.Convert100to10Base(raw_score), '%s/100' % raw_score
+      return raw_score, '%s/100' % raw_score
     else:
       return 0, ''
 
@@ -83,7 +83,7 @@ class Acid3TestSet(test_set_base.TestSet):
           }
     Returns:
       score, display_value
-          # score is from 1 to 10.
+          # score is from 0 to 100.
           # display_value is the text for the cell.
     """
     test_key = 'score'

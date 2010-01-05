@@ -151,36 +151,36 @@ class ReflowTestSet(test_set_base.TestSet):
     return results
 
   def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
-    """Get a normalized score (1 to 10) and a value to output to the display.
+    """Get a normalized score (0 to 100) and a value to output to the display.
 
     Args:
       test_key: a key for a test_set test.
       raw_scores: a dict of raw_scores indexed by test keys.
     Returns:
       score, display_value
-          # score is from 1 to 10.
+          # score is from 0 to 100.
           # display_value is the text for the cell.
     """
     raw_score = raw_scores.get(test_key, None)
     if raw_score in (None, ''):
       # We'll give em the benefit of the doubt here.
-      return 9, ''
+      return 90, ''
 
     raw_score = int(raw_score)
     if raw_score <= 10:
-      score, display = 10, '0X'
+      score, display = 100, '0X'
     elif raw_score <= 35:
-      score, display = 10, '¼X'
+      score, display = 97, '¼X'
     elif raw_score <= 65:
-      score, display = 10, '½X'
+      score, display = 95, '½X'
     elif raw_score <= 85:
-      score, display = 9, '¾X'
+      score, display = 93, '¾X'
     elif raw_score <= 110:
-      score, display = 9, '1X'
+      score, display = 90, '1X'
     elif raw_score <= 180:
-      score, display = 8, '2X'
+      score, display = 80, '2X'
     else:
-      score, display = 6, '3X'
+      score, display = 60, '3X'
     return score, display
 
   def GetRowScoreAndDisplayValue(self, results):
@@ -194,10 +194,10 @@ class ReflowTestSet(test_set_base.TestSet):
           }
     Returns:
       score, display_value
-          # score is from 1 to 10.
+          # score is from 0 to 100.
           # display_value is the text for the cell.
     """
-    return 9, ''
+    return 90, ''
 
 
 TEST_SET = ReflowTestSet(

@@ -60,38 +60,38 @@ _TESTS = (
 class SelectorsTestSet(test_set_base.TestSet):
 
   def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
-    """Get a normalized score (1 to 10) and a value to output to the display.
+    """Get a normalized score (0 to 100) and a value to output to the display.
 
     Args:
       test_key: a key for a test_set test.
       raw_scores: a dict of raw_scores indexed by test keys.
     Returns:
       score, display_value
-          # score is from 1 to 10.
+          # score is from 0 to 100.
           # display_value is the text for the cell.
     """
     raw_score = raw_scores.get(test_key, 0)
     score = 0
     if test_key == 'passed':
       if raw_score >= 2100:
-        score = 10
+        score = 95
       elif raw_score >= 2000:
-        score = 9
+        score = 85
       elif raw_score >= 1950:
-        score = 8
+        score = 75
       elif raw_score >= 1800:
-        score = 7
+        score = 65
       else:
-        score = 5
+        score = 50
     elif test_key == 'failed':
       if raw_score == 0:
-        score = 10
+        score = 95
       elif raw_score <= 5:
-        score = 9
+        score = 85
       elif raw_score <= 20:
-        score = 8
+        score = 75
       else:
-        score = 5
+        score = 50
     return score, str(raw_score)
 
   def GetRowScoreAndDisplayValue(self, results):
@@ -105,7 +105,7 @@ class SelectorsTestSet(test_set_base.TestSet):
           }
     Returns:
       score, display_value
-          # score is from 1 to 10.
+          # score is from 0 to 100.
           # display_value is the text for the cell.
     """
     logging.info('GetRowScoreAndDisplayVAlue: category=%s, results=%s',
@@ -115,11 +115,9 @@ class SelectorsTestSet(test_set_base.TestSet):
     if passed is not None and failed is not None:
       percent_passed = 100.0 * passed / (passed + failed)
       if percent_passed:
-        row_score = self.Convert100to10Base(percent_passed)
-        display_value = '%.1f%%' % percent_passed
-        return row_score, display_value
+        return percent_passed, '%.1f%%' % percent_passed
       else:
-        return 1, '0%'
+        return 100, '0%'
     else:
       return 0, ''
 

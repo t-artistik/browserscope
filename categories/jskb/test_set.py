@@ -55,7 +55,8 @@ class JskbTest(test_set_base.TestBase):
 def rate_display(display, good):
   # TODO(mikesamuel): 3 scores chosen because of the pretty colors they make
   if good is not None:
-    if display in good: return 100
+    if display in good:
+      return 100
     return 50
   return 75
 
@@ -93,30 +94,34 @@ _TESTS = tuple(make_test_list())
 class JskbTestSet(test_set_base.TestSet):
 
   def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
-    """Get a normalized score (1 to 10) and a value to output to the display.
+    """Get a normalized score (0 to 100) and a value to output to the display.
 
     Args:
       test_key: a key for a test_set test.
       raw_scores: a dict of raw_scores indexed by test keys.
     Returns:
       score, display_value
-          # score is from 1 to 10.
+          # score is from 0 to 100.
           # display_value is the text for the cell.
     """
-    if len(self.group_members):
-      if medians is None: return 50, ''
+    test = self.GetTest(test_key)
+    group_members = test.group_members
+    if len(group_members):
+      if raw_scores is None:
+        return 50, ''
       abbrevs = set()
       total_score = 0
       n_scored = 0
-      for member in self.group_members:
+      for member in group_members:
         snippet = ecmascript_snippets.with_name(member.key)
-        member_median = medians.get(member.key)
+        member_median = raw_scores.get(member.key)
         if member_median is not None:
-          score, display = member.GetScoreAndDisplayValue(
-              member_median, medians, is_uri_result)
+          score, display = self.GetTestScoreAndDisplayValue(
+              member.key, raw_scores)
           if ecmascript_snippets.ABBREV in snippet:
             abbrev = snippet.get(ecmascript_snippets.ABBREV).get(display)
-            if abbrev: abbrevs.add(abbrev)
+            if abbrev:
+              abbrevs.add(abbrev)
           total_score += score
           n_scored += 1
       avg_score = (n_scored and int(100 * (total_score / n_scored))) or 50
@@ -138,18 +143,17 @@ class JskbTestSet(test_set_base.TestSet):
 
   def GetRowScoreAndDisplayValue(self, results):
     """Get the overall score for this row of results data.
-    Args:
-      results: A dictionary that looks like:
-      {
-        'testkey1': {'score': 1-10, 'median': median, 'display': 'celltext'},
-        'testkey2': {'score': 1-10, 'median': median, 'display': 'celltext'},
-        etc...
-      }
 
+    Args:
+      results: {
+          'test_key_1': {'score': score_1, 'raw_score': raw_score_1, ...},
+          'test_key_2': {'score': score_2, 'raw_score': raw_score_2, ...},
+          ...
+          }
     Returns:
-      A tuple of (score, display)
-      Where score is a value between 1-100.
-      And display is the text for the cell.
+      score, display_value
+          # score is from 0 to 100.
+          # display_value is the text for the cell.
     """
     if (not results.has_key('passed') or results['passed']['median']
         or results['failed']['median'] is None):

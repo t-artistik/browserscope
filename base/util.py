@@ -707,7 +707,7 @@ def GetSummaryData(user_agent_strings, version_level):
         row_stats = {'row_score': 0, 'row_display': '', 'total_runs': 0}
       stats_data[user_agent]['results'][test_set.category] = {
           'median': row_stats['row_score'],
-          'score': Convert100to10Base(row_stats['row_score']),
+          'score': row_stats['row_score'],
           'display': row_stats['row_display'],
           'total_runs': row_stats['total_runs'],
           'expando': None,

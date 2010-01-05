@@ -241,12 +241,12 @@ class CategoryStatsManagerTest(unittest.TestCase):
                 }
             },
         'Firefox 3.5': {
-            'summary_score': 818,
+            'summary_score': 908,
             'summary_display': '405',
             'total_runs': 2,
             'results': {
                 'coconut': {'score': 800, 'raw_score': 400, 'display': 'd:800'},
-                'apple': {'score': 10, 'raw_score': 1, 'display': 'yes'},
+                'apple': {'score': 100, 'raw_score': 1, 'display': 'yes'},
                 'banana': {'score': 8, 'raw_score': 4, 'display': 'd:8'}
                 }
             },

@@ -118,7 +118,7 @@ class SecurityTestSet(test_set_base.TestSet):
           }
     Returns:
       score, display_value
-          # score is from 1 to 10.
+          # score is from 0 to 100.
           # display_value is the text for the cell.
     """
     logging.info('security getrowscore results: %s' % results)
@@ -134,8 +134,8 @@ class SecurityTestSet(test_set_base.TestSet):
         score = results[test.key]['score']
         logging.info('test: %s, score: %s' % (test.key, score))
         total_valid_tests += 1
-        # For booleans, when "score" is 10 that's test_type true.
-        if score == 10:
+        # For booleans, when "score" is 100 that's test_type true.
+        if score == 100:
           total_score += 1
       else:
         logging.info('test: %s has no median' % test.key)

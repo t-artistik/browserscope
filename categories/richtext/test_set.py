@@ -281,14 +281,14 @@ _TESTS = (
 class RichTextTestSet(test_set_base.TestSet):
 
   def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
-    """Get a normalized score (1 to 10) and a value to output to the display.
+    """Get a normalized score (0 to 100) and a value to output to the display.
 
     Args:
       test_key: a key for a test_set test.
       raw_scores: a dict of raw_scores indexed by test keys.
     Returns:
       score, display_value
-          # score is from 1 to 10.
+          # score is from 0 to 100.
           # display_value is the text for the cell.
     """
     category_tests = self.GetTestsByCategory(test_key)
@@ -310,7 +310,7 @@ class RichTextTestSet(test_set_base.TestSet):
       num_tests = 1
       score = 0
     else:
-      score = int(round(10.0 * display_score / num_tests))
+      score = int(round(100.0 * display_score / num_tests))
     display = '%s/%s' % (display_score, num_tests)
     return score, display
 
@@ -328,7 +328,7 @@ class RichTextTestSet(test_set_base.TestSet):
           }
     Returns:
       score, display_value
-          # score is from 1 to 10.
+          # score is from 0 to 100.
           # display_value is the text for the cell.
     """
     total_passed = 0
@@ -341,7 +341,7 @@ class RichTextTestSet(test_set_base.TestSet):
       passed, total = display.split('/')
       total_passed += int(passed)
       total_tests += int(total)
-    score = int(round(10.0 * total_passed / total_tests))
+    score = int(round(100.0 * total_passed / total_tests))
     display = '%s/%s' % (total_passed, total_tests)
     return score, display
 

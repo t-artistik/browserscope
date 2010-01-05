@@ -230,7 +230,7 @@ class TestSet(object):
     Returns:
       {
           'total_runs': total_runs,
-          'summary_score': summary_score,      # value is from 1 to 10
+          'summary_score': summary_score,      # value is from 1 to 100
           'summary_display': summary_display,  # text to present
           'results': {
               test_key_1: {
@@ -256,7 +256,7 @@ class TestSet(object):
           score, display = 0, ''
         elif self.IsBooleanTest(test_key):
           if raw_score:
-            score, display = 10, settings.STATS_SCORE_TRUE
+            score, display = 100, settings.STATS_SCORE_TRUE
           else:
             score, display = 1, settings.STATS_SCORE_FALSE
         else:
@@ -278,14 +278,14 @@ class TestSet(object):
     return stats
 
   def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
-    """Get a normalized score (1 to 10) and a value to output to the display.
+    """Get a normalized score (0 to 100) and a value to output to the display.
 
     Args:
       test_key: a key for a test_set test.
       raw_scores: a dict of raw_scores indexed by test keys.
     Returns:
       score, display_value
-          # score is from 1 to 10.
+          # score is from 0 to 100.
           # display_value is the text for the cell.
     """
     raise NotImplementedError
@@ -301,18 +301,7 @@ class TestSet(object):
           }
     Returns:
       score, display_value
-          # score is from 1 to 10.
+          # score is from 0 to 100.
           # display_value is the text for the cell.
     """
     raise NotImplementedError
-
-  @staticmethod
-  def Convert100to10Base(value):
-    """Convert a value from 1-100 range to 1-10 range.
-
-    Args:
-      value: an integer from 1 to 100.
-    Returns:
-      an integer from 1 to 10
-    """
-    return max(1, (int(value) + 5) / 10)

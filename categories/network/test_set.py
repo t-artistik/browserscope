@@ -178,30 +178,30 @@ This test checks if an image inserted using a "data:" URL is rendered correctly.
 class NetworkTestSet(test_set_base.TestSet):
 
   def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
-    """Get a normalized score (1 to 10) and a value to output to the display.
+    """Get a normalized score (0 to 100) and a value to output to the display.
 
     Args:
       test_key: a key for a test_set test.
       raw_scores: a dict of raw_scores indexed by test keys.
     Returns:
       score, display_value
-          # score is from 1 to 10.
+          # score is from 0 to 100.
           # display_value is the text for the cell.
     """
     score = 0
     raw_score = raw_scores.get(test_key, 0)
     if test_key == 'hostconn':
       if raw_score > 2:
-        score = 10
+        score = 100
       elif raw_score == 2:
-        score = 5
+        score = 50
       else:
         score = 0
     elif test_key == 'maxconn':
       if raw_score > 20:
-        score = 10
+        score = 100
       elif raw_score >= 10:
-        score = 5
+        score = 50
       else:
         score = 0
     return score, str(raw_score)
@@ -217,7 +217,7 @@ class NetworkTestSet(test_set_base.TestSet):
           }
     Returns:
       score, display_value
-          # score is from 1 to 10.
+          # score is from 0 to 100.
           # display_value is the text for the cell.
 
     Why do we use totalTests as the divisor for "score", but totalValidTests as the divisor for "display"?
@@ -236,14 +236,14 @@ class NetworkTestSet(test_set_base.TestSet):
     for test in visible_tests:
       total_tests += 1
       if test.key in results and results[test.key]['score'] is not None:
-        # For booleans, when "score" is 10 that's test_type true.
+        # For booleans, when "score" is 100 that's test_type true.
         # steve's custom score for hostconn & maxconn map
         # simply to 10 for good, 5 for ok, and 0 for fail, but we only award
         # a point for a 10 on those.
-        if results[test.key]['score'] == 10:
+        if results[test.key]['score'] == 100:
           total_score += 1
         total_valid_tests += 1
-    score = int(round(10.0 * total_score / total_tests))
+    score = int(round(100.0 * total_score / total_tests))
     display = '%s/%s' % (total_score, total_valid_tests)
     return score, display
 

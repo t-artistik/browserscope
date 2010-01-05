@@ -295,9 +295,9 @@ class TestUpdateStatsCache(unittest.TestCase):
     expected_stats = {
         'summary_display': '3',
         'total_runs': 5,
-        'summary_score': 14,
+        'summary_score': 104,
         'results': {
-            'apple': {'score': 10, 'raw_score': 1, 'display': 'yes'},
+            'apple': {'score': 100, 'raw_score': 1, 'display': 'yes'},
             'banana': {'score': 2, 'raw_score': 1, 'display': 'd:2'},
             'coconut': {'score': 2, 'raw_score': 1, 'display': 'd:2'},
             }

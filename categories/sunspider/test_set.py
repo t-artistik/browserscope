@@ -83,19 +83,19 @@ _TESTS = (
 class SunSpiderTestSet(test_set_base.TestSet):
 
   def GetTestScoreAndDisplayValue(self, test, raw_scores):
-      """Get a normalized score (1 to 10) and a value to output to the display.
+      """Get a normalized score (0 to 100) and a value to output to the display.
 
     Args:
       test_key: a key for a test_set test.
       raw_scores: a dict of raw_scores indexed by test keys.
     Returns:
       score, display_value
-          # score is from 1 to 10.
+          # score is from 0 to 100.
           # display_value is the text for the cell.
     """
     raw_score = raw_scores.get(test_key, None)
     if raw_score:
-      return self.Convert100to10Base(raw_score), raw_score
+      return raw_score, raw_score
     else:
       return 0, ''
 

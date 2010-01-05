@@ -90,12 +90,12 @@ class TestGetStats(unittest.TestCase):
         'coconut': 3,
         }
     expected_stats = {
-        'summary_score': 16,
+        'summary_score': 106,
         'summary_display': '4',
         'results': {
             'apple': {
                 'raw_score': 1,
-                'score': 10,
+                'score': 100,
                 'display': 'yes'
                 },
             'coconut': {
@@ -141,19 +141,3 @@ class TestGetStats(unittest.TestCase):
         }
     stats = test_set.GetStats(raw_scores, num_scores)
     self.assertEqual(expected_stats, stats)
-
-
-class TestConvert100to10Base(unittest.TestCase):
-  def testBasicValues(self):
-    Convert100to10Base = test_set_base.TestSet.Convert100to10Base
-    self.assertEqual(1, Convert100to10Base(0))
-    self.assertEqual(1, Convert100to10Base(4))
-    self.assertEqual(1, Convert100to10Base(5))
-    self.assertEqual(1, Convert100to10Base(9))
-    self.assertEqual(1, Convert100to10Base(10))
-    self.assertEqual(1, Convert100to10Base(14))
-    self.assertEqual(2, Convert100to10Base(15))
-    self.assertEqual(9, Convert100to10Base(90))
-    self.assertEqual(9, Convert100to10Base(94))
-    self.assertEqual(10, Convert100to10Base(95))
-    self.assertEqual(10, Convert100to10Base(100))

@@ -453,8 +453,8 @@ class ExecuteImmediatelyTaskQueueService(taskqueue_stub.TaskQueueServiceStub):
                     except:
                         import traceback
                         error = traceback.format_exc()
-                        print error
                         _log_error(error)
+                        raise
                 elif task['method'] == 'POST':
                     body = base64.b64decode(task['body'])
                     logging.info("Execute task immediately: POST %s, body=%s", task['url'], body)
@@ -552,6 +552,7 @@ _MAIN_PAGE_CONTENT = """
                 }
                 if (xmlHttp.status == 200) {
                     var result = eval("(" + xmlHttp.responseText + ")");
+
                     totalRuns += parseInt(result.runs);
                     totalErrors += result.errors.length;
                     totalFailures += result.failures.length;

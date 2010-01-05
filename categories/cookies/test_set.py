@@ -118,14 +118,14 @@ that can be set and retrieved.''',
 class CookiesTestSet(test_set_base.TestSet):
 
   def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
-    """Get a normalized score (1 to 10) and a value to output to the display.
+    """Get a normalized score (0 to 100) and a value to output to the display.
 
     Args:
       test_key: a key for a test_set test.
       raw_scores: a dict of raw_scores indexed by test keys.
     Returns:
       score, display_value
-          # score is from 1 to 10.
+          # score is from 0 to 100.
           # display_value is the text for the cell.
     """
     #logging.info('Cookies.GetScoreAndDisplayValue '
@@ -137,35 +137,34 @@ class CookiesTestSet(test_set_base.TestSet):
     score = 0
     if 'hostconn' == test_key:
       if median > 2:
-        score = 10
+        score = 100
       elif median == 2:
-        score = 5
+        score = 50
       else:
         score = 0
 
     elif 'maxconn' == test_key:
       if median > 20:
-        score = 10
+        score = 100
       elif median >= 10:
-        score = 5
+        score = 50
       else:
         score = 0
     return score, str(median)
 
   def GetRowScoreAndDisplayValue(self, results):
     """Get the overall score for this row of results data.
-    Args:
-      results: A dictionary that looks like:
-      {
-        'testkey1': {'score': 1-10, 'median': median, 'display': 'celltext'},
-        'testkey2': {'score': 1-10, 'median': median, 'display': 'celltext'},
-        etc...
-      }
 
+    Args:
+      results: {
+          'test_key_1': {'score': score_1, 'raw_score': raw_score_1, ...},
+          'test_key_2': {'score': score_2, 'raw_score': raw_score_2, ...},
+          ...
+          }
     Returns:
-      A tuple of (score, display)
-      Where score is a value between 1-100.
-      And display is the text for the cell.
+      score, display_value
+          # score is from 0 to 100.
+          # display_value is the text for the cell.
 
     Why do we use totalTests as the divisor for "score", but totalValidTests as
     the divisor for "display"?
@@ -182,7 +181,7 @@ class CookiesTestSet(test_set_base.TestSet):
     #logging.info('cookies getrowscore results: %s' % results)
 
     #TODO(eric): change this method
-    
+
     total_tests = 0
     total_valid_tests = 0
     total_score = 0
@@ -194,10 +193,10 @@ class CookiesTestSet(test_set_base.TestSet):
         score = results[test.key]['score']
         #logging.info('test: %s, score: %s' % (test.key, score))
         total_valid_tests += 1
-        # boolean 1 = 10, and steve's custom score for hostconn & maxconn map
-        # simply to 10 for good, 5 for ok, and 0 for fail, but we only award
-        # a point for a 10 on those.
-        if score == 10:
+        # boolean 1 = 100, and steve's custom score for hostconn & maxconn map
+        # simply to 100 for good, 50 for ok, and 0 for fail, but we only award
+        # a point for a 100 on those.
+        if score == 100:
           total_score += 1
 
     #logging.info('%s, %s, %s' % (total_score, total_tests, total_valid_tests))
