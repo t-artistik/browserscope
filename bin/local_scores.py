@@ -57,6 +57,7 @@ SCORE_SQL = """
 CATEGORY_BROWSERS_SQL = """
     SELECT category, family, v1, v2, v3
     FROM scores
+    WHERE family IS NOT NULL
     GROUP BY category, family, v1, v2, v3
     ;"""
 
@@ -217,7 +218,7 @@ def BuildRankers(db):
   cursor.execute('''
       SELECT category, test, family, v1, v2, v3, score
       FROM scores
-      WHERE category IS NOT NULL
+      WHERE category IS NOT NULL and family IS NOT NULL
       ORDER by category, test, family, v1, v2, v3
       ;''')
   last_category = None
