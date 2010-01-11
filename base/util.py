@@ -552,8 +552,8 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
       browsers = stats_data.keys()
       result_stats.CategoryBrowserManager.SortBrowsers(browsers)
     logging.info('Retrieved static stats: category=%s', category)
-  elif test_set.category == 'summary':
-    stats_data = GetSummaryData(browsers, version_level)
+  # elif test_set.category == 'summary':
+  # TODO(slamm): write-something tailored to the summary.
   else:
     if not browsers:
       browsers = result_stats.CategoryBrowserManager.GetBrowsers(
@@ -658,23 +658,22 @@ def FormatStatsDataAsGviz(params, request):
   for user_agent in params['user_agents']:
     # Munge user_agent in this case to get rid of things like (Namaroka) which
     # make for the charts pretty awful.
-    splitted = user_agent.split(' ')
-    v_bit = splitted[len(splitted) - 1]
+    v_bit = user_agent.rsplit(' ')[-1]
 
-    if (stats.has_key(user_agent) and
-        stats[user_agent].has_key('results') and
-        stats[user_agent]['score'] != 0):
+    if (user_agent in stats and
+        'results' in stats[user_agent] and
+        stats[user_agent]['summary_score'] != 0):
       if take1:
         row_data = {}
         row_data['user_agent'] = v_bit
-        row_data['score'] = stats[user_agent]['score']
+        row_data['score'] = stats[user_agent]['summary_score']
       elif take2:
-        row_data = [v_bit, stats[user_agent]['score']]
+        row_data = [v_bit, stats[user_agent]['summary_score']]
 
       if with_tests:
         row_data['total_runs'] = stats[user_agent]['total_runs']
         for test in params['tests']:
-          row_data[test.key] = stats[user_agent]['results'][test.key]['median']
+          row_data[test.key] = stats[user_agent]['results'][test.key]['score']
       data.append(row_data)
 
   data_table = gviz_api.DataTable(description)
@@ -683,43 +682,6 @@ def FormatStatsDataAsGviz(params, request):
   return data_table.ToResponse(columns_order=columns_order,
                                order_by='user_agent',
                                tqx=request.GET.get('tqx', ''))
-
-
-def GetSummaryData(user_agent_strings, version_level):
-  """Returns a data dictionary for rendering a summary stats_table.html"""
-  stats_data = {}
-  for user_agent in user_agent_strings:
-    ua_score_avg = 0
-    total_runs = 0
-    for test_set in all_test_sets.GetTestSets():
-      if not stats_data.has_key(user_agent):
-        stats_data[user_agent] = {
-          'total_runs': 0,
-          'results': {},
-          'score': 0,
-          'display': 0
-          }
-      memcache_ua_key = ResultParent.GetMemcacheKey(test_set.category,
-                                                    user_agent)
-      row_stats = memcache.get(key=memcache_ua_key,
-          namespace=settings.STATS_MEMCACHE_UA_ROW_SCORE_NS)
-      if not row_stats:
-        row_stats = {'row_score': 0, 'row_display': '', 'total_runs': 0}
-      stats_data[user_agent]['results'][test_set.category] = {
-          'median': row_stats['row_score'],
-          'score': row_stats['row_score'],
-          'display': row_stats['row_display'],
-          'total_runs': row_stats['total_runs'],
-          'expando': None,
-          }
-      ua_score_avg += int(row_stats['row_score'])
-      total_runs += int(row_stats['total_runs'])
-
-    avg_score = int(ua_score_avg / len(settings.CATEGORIES))
-    stats_data[user_agent]['score'] = avg_score
-    stats_data[user_agent]['display'] = avg_score
-    stats_data[user_agent]['total_runs'] = total_runs
-  return stats_data
 
 
 def GetStatsDataTemplatized(params, template='table'):
@@ -785,10 +747,6 @@ def SeedDatastore(request):
             test_set, '1.2.3.4', user_agent_string, results_str, params_str)
         logging.info(' ------ AddResult, %s of %s: %s',
                      i + 1, NUM_RECORDS, results_str)
-        if increment_counts:
-          result_parent.increment_all_counts()
-          logging.info(' ------ INCREMENTED ALL COUNTS')
-
   memcache.flush_all()
   return http.HttpResponseRedirect('?message=Datastore got seeded.')
 
