@@ -105,7 +105,7 @@
             </td>
 
             <td
-              class="rt-ua-s-d rt-ua-s-{{ stats|by_key:user_agent|by_key:"score"|scale_100_to_10 }}">
+              class="rt-ua-s-d rt-ua-s-{{ stats|by_key:user_agent|by_key:"summary_score"|scale_100_to_10 }}">
               {{ stats|by_key:user_agent|by_key:"summary_display" }}
             </td>
 
