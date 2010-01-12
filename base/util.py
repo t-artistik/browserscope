@@ -629,59 +629,17 @@ def FormatStatsDataAsGviz(params, request):
   Returns:
     A JSON string as content in a text/plain HttpResponse.
   """
-  columns_order = ['user_agent',
-                   'score',
-                   #'total_runs'
-                  ]
-  take1 = False
-  take2 = True
-  if take1:
-    description = {'user_agent': ('string', 'User Agent'),
-                   'score': ('number', 'Score'),
-                   #'total_runs': ('number', '# Tests')
-                  }
-  elif take2:
-    description = [('user_agent', 'string'),
-                   ('score', 'number')]
-
-  with_tests = False
-  if with_tests:
-    for test in params['tests']:
-      gviz_coltype = test.score_type
-      if test.score_type == 'custom':
-        gviz_coltype = 'number'
-      description[test.key] = (gviz_coltype, test.name)
-      columns_order.append(test.key)
-
   data = []
-  stats = params['stats']
   for user_agent in params['user_agents']:
-    # Munge user_agent in this case to get rid of things like (Namaroka) which
-    # make for the charts pretty awful.
-    v_bit = user_agent.rsplit(' ')[-1]
-
-    if (user_agent in stats and
-        'results' in stats[user_agent] and
-        stats[user_agent]['summary_score'] != 0):
-      if take1:
-        row_data = {}
-        row_data['user_agent'] = v_bit
-        row_data['score'] = stats[user_agent]['summary_score']
-      elif take2:
-        row_data = [v_bit, stats[user_agent]['summary_score']]
-
-      if with_tests:
-        row_data['total_runs'] = stats[user_agent]['total_runs']
-        for test in params['tests']:
-          row_data[test.key] = stats[user_agent]['results'][test.key]['score']
-      data.append(row_data)
-
+    summary_score = params['stats'].get(user_agent, {}).get('summary_score', 0)
+    if summary_score:
+      version_string = user_agent.rsplit(' ')[-1]
+      data.append([version_string, summary_score])
+  description = [('user_agent', 'string'), ('score', 'number')]
   data_table = gviz_api.DataTable(description)
   data_table.LoadData(data)
 
-  return data_table.ToResponse(columns_order=columns_order,
-                               order_by='user_agent',
-                               tqx=request.GET.get('tqx', ''))
+  return data_table.ToResponse(tqx=request.GET.get('tqx', ''))
 
 
 def GetStatsDataTemplatized(params, template='table'):
