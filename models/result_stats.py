@@ -193,10 +193,14 @@ class CategoryBrowserManager(db.Model):
     VERSION_DIGITS = 8
     MAX_VERSION = 99999999
     family, v1, v2, v3 = UserAgent.parse_pretty(browser.lower())
+    extra = None
+    if family[-1] == ')':
+      family, extra = family.split(' ', 1)
     return (family.lower(),
             cls._BrowserKeyPart(v1),
             cls._BrowserKeyPart(v2),
-            cls._BrowserKeyPart(v3))
+            cls._BrowserKeyPart(v3),
+            extra)
 
   @classmethod
   def _BrowserKeyPart(cls, v):

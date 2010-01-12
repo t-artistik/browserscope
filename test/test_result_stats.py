@@ -111,6 +111,8 @@ class CategoryBrowserManagerTest(unittest.TestCase):
     cls = result_stats.CategoryBrowserManager
     expected_browsers = [
         'Firefox',
+        'Firefox (Minefield)',
+        'Firefox (Shiretoko)',
         'Firefox 3',
         'Firefox 3.0a3pre',
         'Firefox 3.0b5',
@@ -119,10 +121,10 @@ class CategoryBrowserManagerTest(unittest.TestCase):
         'Firefox 3.0.1',
         'Firefox 3.4',
         'Firefox 3.4.1',
-        'Firefox 3.5a1pre',
-        'Firefox 3.5a4',
+        'Firefox (Shiretoko) 3.5a1pre',
+        'Firefox (Minefield) 3.5a4',
         'Firefox 3.5',
-        'Firefox 3.5.1a3',
+        'Firefox (Namoroka) 3.5.1a3',
         'Firefox 3.5.1',
         'Firefox 3.5.2',
         'iPhone 1.1',
