@@ -55,10 +55,10 @@ SCORE_SQL = """
     ;"""
 
 CATEGORY_BROWSERS_SQL = """
-    SELECT category, family, v1, v2, v3
+    SELECT family, v1, v2, v3
     FROM scores
-    WHERE family IS NOT NULL
-    GROUP BY category, family, v1, v2, v3
+    WHERE category=%s AND family IS NOT NULL
+    GROUP BY family, v1, v2, v3
     ;"""
 
 CATEGORY_COUNTS_SQL = """
@@ -69,9 +69,9 @@ SCORES_SQL = """
     SELECT %(columns)s
     FROM scores
     WHERE
-      category = %%(category)s AND
-      test = %%(test)s AND
-      family = %%(family)s
+      category=%%(category)s AND
+      test=%%(test)s AND
+      family=%%(family)s
       %(v_clauses)s
       %(limit_clause)s
     ;"""
@@ -213,50 +213,51 @@ def DumpRankers(fh, rankers):
     fields.append('|'.join(map(str, ranker.GetValues())))
     print >>fh, ','.join(fields)
 
-def BuildRankers(db):
+def BuildRankers(db, category):
   cursor = db.cursor()
   cursor.execute('''
-      SELECT category, test, family, v1, v2, v3, score
+      SELECT test, family, v1, v2, v3, score
       FROM scores
-      WHERE category IS NOT NULL and family IS NOT NULL
-      ORDER by category, test, family, v1, v2, v3
-      ;''')
-  last_category = None
+      WHERE category=%s AND test IS NOT NULL AND family IS NOT NULL
+      ORDER by test, family, v1, v2, v3
+      ;''', category)
+  test_set = all_test_sets.GetTestSet(category)
   last_test_key = None
   last_parts = None
   rankers = {}
-  for category, test_key, family, v1, v2, v3, score in cursor.fetchall():
+  for test_key, family, v1, v2, v3, score in cursor.fetchall():
     if test_key != last_test_key:
-      if category != last_category:
-        test_set = all_test_sets.GetTestSet(category)
-        last_category = category
-      test = test_set.GetTest(test_key)
-      if test is None:
-        continue
       last_test_key = test_key
+      test = test_set.GetTest(test_key)
+    if test is None:
+      continue
     parts = family, v1, v2, v3
     if parts != last_parts:
       browsers = UserAgent.parts_to_string_list(family, v1, v2, v3)
     for browser in browsers:
-      ranker_key = category, browser, test_key
-      if not ranker_key in rankers:
-        rankers[ranker_key] = CreateRanker(test, browser)
-      ranker = rankers[ranker_key]
+      browser_rankers = rankers.setdefault(browser, {})
+      if test_key not in browser_rankers:
+        ranker = browser_rankers[test_key] = CreateRanker(test, browser)
+      else:
+        ranker = browser_rankers[test_key]
       ranker.Add(score)
   return rankers
 
 
-def GetCategoryBrowsers(db):
+def GetCategoryBrowsers(db, category):
   cursor = db.cursor()
-  cursor.execute(CATEGORY_BROWSERS_SQL)
-  category_browsers = {}
-  for category, family, v1, v2, v3 in cursor.fetchall():
+  cursor.execute(CATEGORY_BROWSERS_SQL, category)
+  level_browsers = [set() for version_level in range(4)]
+  for family, v1, v2, v3 in cursor.fetchall():
     ua_browsers = UserAgent.parts_to_string_list(family, v1, v2, v3)
     max_ua_browsers_index = len(ua_browsers) - 1
     for version_level in range(4):
-      category_browsers.setdefault((category, version_level), set()).add(
+      level_browsers[version_level].add(
           ua_browsers[min(max_ua_browsers_index, version_level)])
-  return category_browsers
+  return level_browsers
+
+def GetCategories():
+  return [test_set.category for test_set in all_test_sets.GetTestSets()]
 
 
 def CheckTests(db):

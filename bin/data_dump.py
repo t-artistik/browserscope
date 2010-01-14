@@ -58,7 +58,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from third_party.appengine_tools import appengine_rpc
 
 MAX_ENTITIES_REQUESTED = 100
-MAX_RANKERS_UPLOADED = 50
+MAX_RANKERS_UPLOADED = 40
 RESTART_OVERLAP_MINUTES=15
 
 CREATE_TABLES_SQL = (
@@ -334,59 +334,70 @@ class DataDumpRpcServer(object):
   def UnpauseDirtyManager(self):
     self.rpc_server.Send('/admin/unpause_dirty')
 
-  def UploadRankers(self, rankers):
-    ranker_batch = {}
-    num_rankers = len(rankers)
-    ranker_keys = rankers.keys()
-    ranker_keys.sort()
-    category_browser_num_tests = {}
-    for category, browser, test_key in ranker_keys:
-      category_browser_num_tests.setdefault((category, browser), 0)
-      category_browser_num_tests[category, browser] += 1
-    for ranker_key in ranker_keys:
-      ranker = rankers[ranker_key]
-      if len(ranker_batch) < MAX_RANKERS_UPLOADED:
-        ranker_batch[ranker_key] = ranker
-      else:
-        logging.info('Rankers to update: %s', num_rankers)
-        data = []
-        params_str = None
-        for (category, browser, test_key), ranker in ranker_batch.items():
-          data.append([
-              category,
-              test_key,
-              browser,
-              params_str,
-              ranker.__class__.__name__,
-              ranker.GetMedianAndNumScores()[1],
-              '|'.join(map(str, ranker.GetValues())),
-              ])
-        params = {
-            'data': simplejson.dumps(data),
-            }
-        response_params = self.Send('/admin/rankers/upload', params)
-        updated_rankers = response_params['updated_rankers']
-        num_rankers -= len(updated_rankers)
-        updated_category_browsers = {}
-        for category, test_key, browser, params_str in updated_rankers:
-          del ranker_batch[(category, browser, test_key)]
-          category_browser_num_tests[(category, browser)] -= 1
-          if category_browser_num_tests[(category, browser)] == 0:
-            updated_category_browsers.setdefault(category, []).append(browser)
-        for category, browsers in updated_category_browsers.items():
-          self.Send('/admin/update_stats_cache',
-                    {'category': category, 'browsers': ','.join(browsers)},
-                    method='GET', json_response=False)
+  def UploadRankers(self, category, rankers):
+    def GetRankerBatches(rankers, batch_size):
+      ranker_batch = []
+      for browser in rankers:
+        for test_key, ranker in rankers[browser].items():
+          if len(ranker_batch) < batch_size:
+            ranker_batch.append((browser, test_key, ranker))
+          else:
+            yield ranker_batch
+            ranker_batch = []
+      if ranker_batch:
+        yield ranker_batch
 
-  def UploadCategoryBrowsers(self, db):
-    category_browsers = local_scores.GetCategoryBrowsers(db)
-    for (category, version_level), browsers in category_browsers.items():
+    num_to_upload = sum(len(x) for x in rankers.values())
+    num_uploaded = {}
+    for ranker_batch in GetRankerBatches(rankers, MAX_RANKERS_UPLOADED):
+      logging.info('Rankers to update: %s', num_to_upload)
+      test_key_browsers = []
+      ranker_values = []
+      completed_browsers = []
+      for browser, test_key, ranker in ranker_batch:
+        test_key_browsers.append([
+            test_key,
+            browser])
+        median, num_scores = ranker.GetMedianAndNumScores()
+        ranker_values.append([
+            median,
+            num_scores,
+            '|'.join(map(str, ranker.GetValues())),
+            ])
+        num_to_upload -= 1
+        num_uploaded.setdefault(browser, 0)
+        num_uploaded[browser] += 1
+        if num_uploaded[browser] == len(rankers[browser]):
+          completed_browsers.append(browser)
       params = {
           'category': category,
-          'version_level': version_level,
-          'browsers': ','.join(list(browsers)),
+          'test_key_browsers_json': simplejson.dumps(test_key_browsers),
+          'ranker_values_json': simplejson.dumps(ranker_values),
           }
-      self.Send('/admin/upload_category_browsers', params, json_response=False)
+      num_retries = 0
+      while 1:
+        response_params = self.Send('/admin/rankers/upload', params)
+        if 'message' not in response_params:
+          break
+        logging.info('Server message: %s', response_params['message'])
+        if num_retries == 2:
+          logging.info('Giving up after two retries.')
+          break
+        logging.info('Retrying.')
+        num_retries += 1
+      if completed_browsers:
+        self.Send('/admin/update_stats_cache', {
+            'category': category,
+            'browsers': ','.join(completed_browsers),
+            }, method='GET', json_response=False)
+
+  def UploadCategoryBrowsers(self, category, version_level, browsers):
+    params = {
+        'category': category,
+        'version_level': version_level,
+        'browsers': ','.join(list(browsers)),
+        }
+    self.Send('/admin/upload_category_browsers', params, json_response=False)
 
 def ParseArgs(argv):
   options, args = getopt.getopt(
@@ -414,23 +425,42 @@ def ParseArgs(argv):
 
 
 def main(argv):
+  categories = local_scores.GetCategories()
   (host, user, mysql_default_file,
    is_release, is_category_browsers_only, argv) = ParseArgs(argv)
   start = datetime.datetime.now()
   db = MySQLdb.connect(read_default_file=mysql_default_file)
   if is_category_browsers_only:
     server = DataDumpRpcServer(host, user)
-    server.UploadCategoryBrowsers(db)
+    for category in categories:
+      category_browsers = local_scores.GetCategoryBrowsers(db, category)
+      for version_level, browsers in category_browsers:
+        server.UploadCategoryBrowsers(category, version_level, browsers)
   elif is_release:
     try:
       server = DataDumpRpcServer(host, user)
-      server.PauseDirtyManager()
+      # logging.info("Pause Dirty Manager")
+      # server.PauseDirtyManager()
+      logging.info("Download Entities for all categories.")
       server.DownloadEntities(db, start)
-      rankers = local_scores.BuildRankers(db)
-      server.UploadRankers(rankers)
-      server.UploadCategoryBrowsers(db)
+      for category in categories:
+        logging.info("Build Rankers: %s", category)
+        rankers = local_scores.BuildRankers(db, category)
+
+        logging.info("Upload Rankers: %s", category)
+        server.UploadRankers(category, rankers)
+
+        logging.info("Upload Category Browsers: %s", category)
+        category_browsers = local_scores.GetCategoryBrowsers(db, category)
+        for version_level, browsers in enumerate(category_browsers):
+          if not browsers:
+            logging.info("Skipping empty category browsers: version_level=%s",
+                         version_level)
+            continue
+          server.UploadCategoryBrowsers(category, version_level, browsers)
     finally:
-      server.UnpauseDirtyManager()
+      pass
+      #      server.UnpauseDirtyManager()
   else:
     server = DataDumpRpcServer(host, user)
     server.DownloadEntities(db, start)

@@ -77,7 +77,8 @@ class TestBase(object):
     return result_ranker.GetRanker(self, browser, params_str)
 
   def GetOrCreateRankers(self, browsers, params_str=None):
-    return result_ranker.GetOrCreateRankers(self, browsers, params_str)
+    test_browsers = [(self, b) for b in browsers]
+    return result_ranker.GetOrCreateRankers(test_browsers, params_str)
 
   def IsVisible(self):
     return not hasattr(self, 'is_hidden_stat') or not self.is_hidden_stat
@@ -192,9 +193,9 @@ class TestSet(object):
     Returns:
       [ranker_1, ranker_2, ...]
     """
-    tests = tests or self.tests
+    test_browsers = [(t, browser) for t in tests or self.tests]
     params_str = self.default_params and str(self.default_params) or None
-    return result_ranker.GetRankers(tests, browser, params_str)
+    return result_ranker.GetRankers(test_browsers, params_str)
 
   def GetMediansAndNumScores(self, browser):
     """Return the raw scores for a given browser.

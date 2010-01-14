@@ -14,8 +14,8 @@
 #
 # Author elsigh@google.com (Lindsey Simon)
 
-application: ua-profiler-sandbox
-version: slamm
+application: ua-profiler
+version: 1
 runtime: python
 api_version: 1
 
@@ -38,6 +38,7 @@ skip_files: |
   (.*/django/test/.*)|
   (.*/django/bin/.*)|
   (.*/django/oldforms/.*)|
+  (bin/.*)|
   )$
 
 handlers:

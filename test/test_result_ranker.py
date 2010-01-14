@@ -33,73 +33,66 @@ import mock_data
 MockTestSet = mock_data.MockTestSet
 
 
-class MemcacheBackedRankerTest(unittest.TestCase):
+class RankerCacherTest(unittest.TestCase):
   def setUp(self):
     self.mox = mox.Mox()
-    self.cls = result_ranker.CachedRanker
+    self.cls = result_ranker.RankerCacher
     self.memcache_params = {'namespace': self.cls.MEMCACHE_NAMESPACE}
 
   def tearDown(self):
     self.mox.UnsetStubs()
 
-  def testGetByNamesOneItemInMemcache(self):
-    self.mox.StubOutWithMock(self.cls, 'FromString')
+  def testCacheGetOneItemInMemcache(self):
+    ranker_class = self.mox.CreateMock(result_ranker.CountRanker)
     self.mox.StubOutWithMock(memcache, 'get_multi')
     memcache.get_multi(['k1'], **self.memcache_params).AndReturn({'k1': 's1'})
-    self.cls.FromString('k1', 's1').AndReturn('r1')
+    ranker_class.FromString('k1', 's1').AndReturn('r1')
     self.mox.ReplayAll()
-    rankers = self.cls.CacheGet(['k1'])
+    rankers = self.cls.CacheGet(['k1'], {'k1': ranker_class})
     self.mox.VerifyAll()
     self.assertEqual({'k1': 'r1'}, rankers)
 
-  def testGetByNamesOneItemInDb(self):
-    self.mox.StubOutWithMock(self.cls, 'get_by_key_name')
+  def testCacheGetOneItemInDb(self):
+    ranker_class = self.mox.CreateMock(result_ranker.CountRanker)
     self.mox.StubOutWithMock(memcache, 'get_multi')
     memcache.get_multi(['k1'], **self.memcache_params).AndReturn({})
-    self.cls.get_by_key_name(['k1']).AndReturn(['r1'])
+    ranker_class.get_by_key_name(['k1']).AndReturn(['r1'])
     self.mox.ReplayAll()
-    rankers = self.cls.CacheGet(['k1'])
+    rankers = self.cls.CacheGet(['k1'], {'k1': ranker_class})
     self.mox.VerifyAll()
     self.assertEqual({'k1': 'r1'}, rankers)
 
-  def testGetByNamesOneItemNotFound(self):
-    self.mox.StubOutWithMock(self.cls, 'get_by_key_name')
+  def testCacheGetOneItemNotFound(self):
+    ranker_class = self.mox.CreateMock(result_ranker.CountRanker)
     self.mox.StubOutWithMock(memcache, 'get_multi')
     memcache.get_multi(['k1'], **self.memcache_params).AndReturn({})
-    self.cls.get_by_key_name(['k1']).AndReturn([None])
+    ranker_class.get_by_key_name(['k1']).AndReturn([None])
     self.mox.ReplayAll()
-    rankers = self.cls.CacheGet(['k1'])
+    rankers = self.cls.CacheGet(['k1'], {'k1': ranker_class})
     self.mox.VerifyAll()
     self.assertEqual({}, rankers)
 
-  def testGetByNamesMulti(self):
-    self.mox.StubOutWithMock(self.cls, 'FromString')
-    self.mox.StubOutWithMock(self.cls, 'get_by_key_name')
+  def testCacheGetMulti(self):
+    ranker_class_a = self.mox.CreateMock(result_ranker.CountRanker)
+    ranker_class_b = self.mox.CreateMock(result_ranker.LastNRanker)
     self.mox.StubOutWithMock(memcache, 'get_multi')
     memcache.get_multi(
-        ['k1', 'k2', 'k3'], **self.memcache_params).AndReturn(
-        {'k2': 's2'})
-    self.cls.FromString('k2', 's2').AndReturn('r2')
-    self.cls.get_by_key_name(['k1', 'k3']).AndReturn(
-        [None, 'r3'])
+        ['ka1', 'ka2', 'kb1', 'kb2', 'kb3'], **self.memcache_params).AndReturn(
+        {'ka2': 'sa2'})
+    ranker_class_a.FromString('ka2', 'sa2').AndReturn('ra2')
+    ranker_class_a.get_by_key_name(['ka1']).InAnyOrder().AndReturn([])
+    ranker_class_b.get_by_key_name(['kb1', 'kb2', 'kb3']).InAnyOrder(
+        ).AndReturn([None, 'rb2', None])
     self.mox.ReplayAll()
-    rankers = self.cls.CacheGet(['k1', 'k2', 'k3'])
+    rankers = self.cls.CacheGet(['ka1', 'ka2', 'kb1', 'kb2', 'kb3'], {
+        'ka1': ranker_class_a,
+        'ka2': ranker_class_a,
+        'kb1': ranker_class_b,
+        'kb2': ranker_class_b,
+        'kb3': ranker_class_b,
+        })
     self.mox.VerifyAll()
-    self.assertEqual({'k2': 'r2', 'k3': 'r3'}, rankers)
-
-  def testGetByNamesMultiUseMemcacheOnly(self):
-    self.mox.StubOutWithMock(self.cls, 'FromString')
-    self.mox.StubOutWithMock(self.cls, 'get_by_key_name')
-    self.mox.StubOutWithMock(memcache, 'get_multi')
-    memcache.get_multi(
-        ['k1', 'k2', 'k3'], **self.memcache_params).AndReturn(
-        {'k1': 's1', 'k3': 's3'})
-    self.cls.FromString('k1', 's1').InAnyOrder('deserialize').AndReturn('r1')
-    self.cls.FromString('k3', 's3').InAnyOrder('deserialize').AndReturn('r3')
-    self.mox.ReplayAll()
-    rankers = self.cls.CacheGet(['k1', 'k2', 'k3'], use_memcache_only=True)
-    self.mox.VerifyAll()
-    self.assertEqual({'k1': 'r1', 'k3': 'r3'}, rankers)
+    self.assertEqual({'ka2': 'ra2', 'kb2': 'rb2'}, rankers)
 
 
 class CountRankerTest(unittest.TestCase):
@@ -208,3 +201,13 @@ class LastNRankerTest(unittest.TestCase):
     ranker = result_ranker.GetRanker(*self.ranker_params)
     self.assertEqual([4, 4, 4, 5], ranker.scores)
     self.assertEqual((4, 21), ranker.GetMedianAndNumScores())
+
+
+class GetRankersTest(unittest.TestCase):
+  def setUp(self):
+    self.test_set = MockTestSet()
+
+  def testGetRankersOneDoesNotExist(self):
+    test = self.test_set.tests[0]
+    rankers = result_ranker.GetRankers([(test, 'Android 1.5')])
+    self.assertEqual([None], rankers)

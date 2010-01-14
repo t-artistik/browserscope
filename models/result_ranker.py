@@ -24,49 +24,36 @@ import logging
 from google.appengine.api import memcache
 from google.appengine.ext import db
 
-class CachedRanker(object):
+class RankerCacher(object):
 
   MEMCACHE_NAMESPACE = 'result_ranker'
 
-  def CachePut(self):
-    memcache.set(self.key().name(), self.ToString(),
-                 namespace=self.MEMCACHE_NAMESPACE)
-    self.put()
+  @classmethod
+  def CachePut(cls, ranker):
+    memcache.set(ranker.key().name(), ranker.ToString(),
+                 namespace=cls.MEMCACHE_NAMESPACE)
+    ranker.put()
 
   @classmethod
-  def CacheGet(cls, key_names, use_memcache_only=False):
+  def CacheGet(cls, key_names, ranker_classes):
     serialized_rankers = memcache.get_multi(
         key_names, namespace=cls.MEMCACHE_NAMESPACE)
-    rankers = dict((k, cls.FromString(k, v))
+    rankers = dict((k, ranker_classes[k].FromString(k, v))
                    for k, v in serialized_rankers.items())
-    if not use_memcache_only:
-      db_key_names = [k for k in key_names if k not in rankers]
-      if db_key_names:
-        for key_name, ranker in zip(db_key_names,
-                                    cls.get_by_key_name(db_key_names)):
+    db_key_names = {}
+    for key_name in key_names:
+      if key_name not in rankers:
+        db_key_names.setdefault(ranker_classes[key_name], []).append(key_name)
+    if db_key_names:
+      for ranker_class, key_names in db_key_names.items():
+        for key_name, ranker in zip(
+            key_names, ranker_class.get_by_key_name(key_names)):
           if ranker:
             rankers[key_name] = ranker
     return rankers
 
-  def key(self):
-    raise NotImplementedError
 
-  def put(self):
-    raise NotImplementedError
-
-  @classmethod
-  def get_by_key_name(cls, key_names):
-     raise NotImplementedError
-
-  def ToString(self):
-    raise NotImplementedError
-
-  @classmethod
-  def FromString(cls, key_name, serialized_value):
-    raise NotImplementedError
-
-
-class CountRanker(db.Model, CachedRanker):
+class CountRanker(db.Model):
   """Maintain a list of score counts.
 
   The minimum score is assumed to be 0.
@@ -102,11 +89,11 @@ class CountRanker(db.Model, CachedRanker):
     if slots_needed > 0:
       self.counts.extend([0] * slots_needed)
     self.counts[score] += 1
-    self.CachePut()
+    RankerCacher.CachePut(self)
 
   def SetValues(self, counts, num_scores):
     self.counts = counts
-    self.CachePut()
+    RankerCacher.CachePut(self)
 
   def ToString(self):
     return array.array('L', self.counts).tostring()
@@ -118,7 +105,7 @@ class CountRanker(db.Model, CachedRanker):
     return cls(key_name=key_name, counts=counts.tolist())
 
 
-class LastNRanker(db.Model, CachedRanker):
+class LastNRanker(db.Model):
   """Approximate the median by keeping the last MAX_SCORES scores."""
   MAX_NUM_SAMPLED_SCORES = 100
 
@@ -151,12 +138,12 @@ class LastNRanker(db.Model, CachedRanker):
       else:
         self.scores.pop(0)
     self.num_scores += 1
-    self.CachePut()
+    RankerCacher.CachePut(self)
 
   def SetValues(self, scores, num_scores):
     self.scores = scores
     self.num_scores = num_scores
-    self.CachePut()
+    RankerCacher.CachePut(self)
 
   def ToString(self):
     return array.array('l', self.scores + [self.num_scores]).tostring()
@@ -194,76 +181,58 @@ def GetRanker(test, browser, params_str=None):
   Returns:
     an instance of a RankerBase derived class (None if not found).
   """
-  ranker_class = RankerClass(test.min_value, test.max_value)
-  category = test.test_set.category
-  key_name = RankerKeyName(category, test.key, browser, params_str)
-  return ranker_class.CacheGet([key_name]).get(key_name, None)
+  return GetRankers([(test, browser)], params_str)[0]
 
 
-def GetRankers(tests, browser, params_str=None):
+def GetRankers(test_browsers, params_str=None, use_insert=False):
   """Get a ranker that matches the given args.
 
   Args:
-    tests: a list of instances derived from test_set_base.TestBase.
-    browser: a string like 'Firefox 3' or 'Chrome 2.0.156'.
+    test_browsers: a list of tuples of (test_instance, browser)
+        where 'browser' a string like 'Firefox 3' or 'Chrome 2.0.156'.
     params_str: a string representation of test_set_params.Params.
+    use_insert: a boolean for whether to create non-existent rankers.
   Returns:
-    a list of instances derived from RankerBase (None values when not found).
+    a list of instances derived from RankerBase
+    (None for each ranker that does not exist).
   """
-  rankers = [None] * len(tests)
-  key_name_indexes = {}
-  ranker_key_names = {}
-  for index, test in enumerate(tests):
+  key_names = []
+  ranker_classes = {}
+  for test, browser in test_browsers:
     category = test.test_set.category
     key_name = RankerKeyName(category, test.key, browser, params_str)
-    key_name_indexes[key_name] = index
-    ranker_class = RankerClass(test.min_value, test.max_value)
-    ranker_key_names.setdefault(ranker_class, []).append(key_name)
-  for ranker_class, key_names in ranker_key_names.items():
-    for key_name, ranker in ranker_class.CacheGet(key_names).items():
-      rankers[key_name_indexes[key_name]] = ranker
+    key_names.append(key_name)
+    ranker_classes[key_name] = RankerClass(test.min_value, test.max_value)
+  existing_rankers = RankerCacher.CacheGet(key_names, ranker_classes)
+  if use_insert:
+    rankers = [(existing_rankers.get(key_name, None) or
+                ranker_classes[key_name].get_or_insert(key_name))
+               for key_name in key_names]
+  else:
+    rankers = [existing_rankers.get(k, None) for k in key_names]
   return rankers
 
 
 def GetOrCreateRanker(test, browser, params_str=None):
-  """Get or create a ranker that matches the given args.
+  """Get a ranker that matches the given args.
 
   Args:
     test: an instance of a test_set_base.TestBase derived class.
     browser: a string like 'Firefox 3' or 'Chrome 2.0.156'.
     params_str: a string representation of test_set_params.Params.
   Returns:
-    an instance of a RankerBase derived class.
+    an instance of a RankerBase derived class (None if not found).
   """
-  ranker_class = RankerClass(test.min_value, test.max_value)
-  category = test.test_set.category
-  key_name = RankerKeyName(category, test.key, browser, params_str)
-  ranker = ranker_class.CacheGet(
-      [key_name], use_memcache_only=True).get(key_name, None)
-  if not ranker:
-    ranker = ranker_class.get_or_insert(key_name)
-  return ranker
+  return GetRankers([(test, browser)], params_str, use_insert=True)[0]
 
-
-def GetOrCreateRankers(test, browsers, params_str=None):
-  """Get or create a ranker that matches the given args.
+def GetOrCreateRankers(test_browsers, params_str=None):
+  """Get a ranker that matches the given args.
 
   Args:
-    test: an instance of a test_set_base.TestBase derived class.
-    browsers: a list of browsers like ['Firefox 3', 'Chrome 2.0.156'].
+    test_browsers: a list of tuples of (test_instance, browser)
+        where 'browser' a string like 'Firefox 3' or 'Chrome 2.0.156'.
     params_str: a string representation of test_set_params.Params.
   Returns:
-    [browser_ranker_1, browser_ranker_2, ...]
+    an instance of a RankerBase derived class (None if not found).
   """
-  rankers = []
-  ranker_class = RankerClass(test.min_value, test.max_value)
-  category = test.test_set.category
-  key_names = [RankerKeyName(category, test.key, browser, params_str)
-               for browser in browsers]
-  existing_rankers = ranker_class.CacheGet(key_names)
-  for key_name in key_names:
-    ranker = existing_rankers.get(key_name, None)
-    if not ranker:
-      ranker = ranker_class.get_or_insert(key_name)
-    rankers.append(ranker)
-  return rankers
+  return GetRankers(test_browsers, params_str, use_insert=True)

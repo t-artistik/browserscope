@@ -28,6 +28,7 @@ import settings
 
 from django.test.client import Client
 from django.utils import simplejson
+from google.appengine.api import datastore_types
 from google.appengine.ext import db
 
 from models import result_ranker
@@ -43,11 +44,13 @@ class TestUploadRankers(unittest.TestCase):
 
     self.mox = mox.Mox()
     self.mox.StubOutWithMock(time, 'clock')
-    self.mox.StubOutWithMock(result_ranker, 'GetOrCreateRanker')
+    self.mox.StubOutWithMock(result_ranker, 'GetOrCreateRankers')
     self.apple_test = self.test_set.GetTest('apple')
     self.coconut_test = self.test_set.GetTest('coconut')
     self.apple_ranker = self.mox.CreateMock(result_ranker.CountRanker)
+    self.apple_ranker_key = self.mox.CreateMock(datastore_types.Key)
     self.coconut_ranker = self.mox.CreateMock(result_ranker.LastNRanker)
+    self.coconut_ranker_key = self.mox.CreateMock(datastore_types.Key)
 
     self.client = Client()
 
@@ -55,55 +58,112 @@ class TestUploadRankers(unittest.TestCase):
     self.mox.UnsetStubs()
 
   def testBasic(self):
-    data = (
-        (self.test_set.category, 'apple', 'Firefox 3.0', None,
-         'CountRanker', 5, '2|3'),
-        (self.test_set.category, 'coconut', 'Firefox 3.0', None,
-         'LastNRanker', 7, '101|99|101|2|988|3|101'),
+    test_key_browsers = (
+        ('apple', 'Firefox 3.0'),
+        ('coconut', 'Firefox 3.0'),
         )
-    params = {'data': simplejson.dumps(data),}
-
+    ranker_values = (
+        (1, 5, '2|3'),
+        (101, 7, '101|99|101|2|988|3|101'),
+        )
+    params = {
+        'category': self.test_set.category,
+        'test_key_browsers_json': simplejson.dumps(test_key_browsers),
+        'ranker_values_json': simplejson.dumps(ranker_values),
+        'time_limit': 10,
+        }
     time.clock().AndReturn(0)
+    test_browsers = [
+        (self.apple_test, 'Firefox 3.0'),
+        (self.coconut_test, 'Firefox 3.0'),
+        ]
+    result_ranker.GetOrCreateRankers(test_browsers, None).AndReturn(
+        [self.apple_ranker, self.coconut_ranker])
     time.clock().AndReturn(0.5)
-    result_ranker.GetOrCreateRanker(
-        self.apple_test, 'Firefox 3.0', None).AndReturn(self.apple_ranker)
+    self.apple_ranker.GetMedianAndNumScores().AndReturn((1, 2))
     self.apple_ranker.SetValues([2, 3], 5)
     time.clock().AndReturn(1)  # under timelimit
-    result_ranker.GetOrCreateRanker(
-        self.coconut_test, 'Firefox 3.0', None).AndReturn(self.coconut_ranker)
+    self.coconut_ranker.GetMedianAndNumScores().AndReturn((50, 5))
     self.coconut_ranker.SetValues([101, 99, 101, 2, 988, 3, 101], 7)
 
     self.mox.ReplayAll()
     response = self.client.get('/admin/rankers/upload', params)
     self.mox.VerifyAll()
+    self.assertEqual(simplejson.dumps({}), response.content)
+    self.assertEqual(200, response.status_code)
+
+
+  def testOverTimeLimit(self):
+    test_key_browsers = (
+        ('apple', 'Firefox 3.0'),
+        ('coconut', 'Firefox 3.0'),
+        )
+    ranker_values = (
+        (1, 5, '2|3'),
+        (101, 7, '101|99|101|2|988|3|101'),
+        )
+    params = {
+        'category': self.test_set.category,
+        'test_key_browsers_json': simplejson.dumps(test_key_browsers),
+        'ranker_values_json': simplejson.dumps(ranker_values),
+        'time_limit': 10,
+        }
+
+    time.clock().AndReturn(0)
+    test_browsers = [
+        (self.apple_test, 'Firefox 3.0'),
+        (self.coconut_test, 'Firefox 3.0'),
+        ]
+    result_ranker.GetOrCreateRankers(test_browsers, None).AndReturn(
+        [self.apple_ranker, self.coconut_ranker])
+
+    time.clock().AndReturn(0.5)
+    self.apple_ranker.GetMedianAndNumScores().AndReturn((1, 2))
+    self.apple_ranker.SetValues([2, 3], 5)
+    time.clock().AndReturn(10.1)  # over timelimit
+    self.mox.ReplayAll()
+    response = self.client.get('/admin/rankers/upload', params)
+    self.mox.VerifyAll()
     expected_response_content = simplejson.dumps({
-        'updated_rankers': [row[0:4] for row in data]
+        'message': 'Over time limit',
         })
     self.assertEqual(expected_response_content, response.content)
     self.assertEqual(200, response.status_code)
 
 
-  def testOverTimeLimit(self):
-    data = (
-        (self.test_set.category, 'apple', 'Firefox 3.0', None,
-         'CountRanker', 5, '2|3'),
-        (self.test_set.category, 'coconut', 'Firefox 3.0', None,
-         'LastNRanker', 7, '101|99|101|2|988|3|101'),
+  def testSkipUnchangedValues(self):
+    test_key_browsers = (
+        ('apple', 'Firefox 3.0'),
+        ('coconut', 'Firefox 3.0'),
         )
-    params = {'data': simplejson.dumps(data),}
-
+    ranker_values = (
+        (1, 5, '2|3'),
+        (101, 7, '101|99|101|2|988|3|101'),
+        )
+    params = {
+        'category': self.test_set.category,
+        'test_key_browsers_json': simplejson.dumps(test_key_browsers),
+        'ranker_values_json': simplejson.dumps(ranker_values),
+        'time_limit': 10,
+        }
     time.clock().AndReturn(0)
+    test_browsers = [
+        (self.apple_test, 'Firefox 3.0'),
+        (self.coconut_test, 'Firefox 3.0'),
+        ]
+    result_ranker.GetOrCreateRankers(test_browsers, None).AndReturn(
+        [self.apple_ranker, self.coconut_ranker])
     time.clock().AndReturn(0.5)
-    result_ranker.GetOrCreateRanker(
-        self.apple_test, 'Firefox 3.0', None).AndReturn(self.apple_ranker)
-    self.apple_ranker.SetValues([2, 3], 5)
-    time.clock().AndReturn(3.1)  # over timelimit
-
+    self.apple_ranker.GetMedianAndNumScores().AndReturn((1, 5))
+    self.apple_ranker.key().AndReturn(self.apple_ranker_key)
+    self.apple_ranker_key.name().AndReturn('appl')
+    time.clock().AndReturn(1)
+    self.coconut_ranker.GetMedianAndNumScores().AndReturn((101, 7))
+    self.coconut_ranker.key().AndReturn(self.coconut_ranker_key)
+    self.coconut_ranker_key.name().AndReturn('coco')
     self.mox.ReplayAll()
     response = self.client.get('/admin/rankers/upload', params)
+    logging.info('response: %s', response)
     self.mox.VerifyAll()
-    expected_response_content = simplejson.dumps({
-        'updated_rankers': [data[0][0:4]],
-        })
-    self.assertEqual(expected_response_content, response.content)
+    self.assertEqual('{}', response.content)
     self.assertEqual(200, response.status_code)

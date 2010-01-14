@@ -36,39 +36,50 @@ from django.utils import simplejson
 @decorators.admin_required
 def UploadRankers(request):
   """Rebuild rankers."""
-  time_limit = int(request.REQUEST.get('time_limit', 3))
-  data_str = request.REQUEST.get('data')
+  time_limit = int(request.REQUEST.get('time_limit', 8))
+  category = request.REQUEST.get('category')
+  params_str = request.REQUEST.get('params_str')
+  test_key_browsers_json = request.REQUEST.get('test_key_browsers_json')
+  ranker_values_json = request.REQUEST.get('ranker_values_json')
 
-  if not data_str:
-    return http.HttpResponseServerError('Must send "data" param with JSON.')
+  if not category:
+    return http.HttpResponseServerError('Must send "category".')
+  if not test_key_browsers_json:
+    return http.HttpResponseServerError('Must send "test_key_browsers_json".')
+  if not ranker_values_json:
+    return http.HttpResponseServerError('Must send "ranker_values_json".')
 
   try:
-    data = simplejson.loads(data_str)
-
+    test_key_browsers = simplejson.loads(test_key_browsers_json)
+    ranker_values = simplejson.loads(ranker_values_json)
     start_time = time.clock()
 
     message = None
-    updated_rankers = set()
-    for (category, test_key, browser, params_str,
-         ranker_class, num_scores, values_str) in data:
+    test_set = all_test_sets.GetTestSet(category)
+    test_browsers = [(test_set.GetTest(test_key), browser)
+                     for test_key, browser in test_key_browsers]
+    rankers = result_ranker.GetOrCreateRankers(test_browsers, params_str)
+
+    for ranker, (median, num_scores, values_str) in zip(rankers, ranker_values):
       if time.clock() - start_time > time_limit:
         message = 'Over time limit'
         break
-      test_set = all_test_sets.GetTestSet(category)
-      test = test_set.GetTest(test_key)
-      ranker = result_ranker.GetOrCreateRanker(test, browser, params_str)
+      if ranker.GetMedianAndNumScores() == (median, num_scores):
+        logging.info('Skipping ranker with unchanged values: %s',
+                     ranker.key().name())
+        continue
       values = map(int, values_str.split('|'))
       try:
         ranker.SetValues(values, num_scores)
-        updated_rankers.add((category, test_key, browser, params_str))
       except db.Timeout:
-        pass
-      response_params = {
-          'updated_rankers': sorted(updated_rankers),
-          }
-      if message:
-        response_params['message'] = message
+        message = 'db.Timeout'
+        break
+    response_params = {}
+    if message:
+      logging.info('message: %s', message)
+      response_params['message'] = message
     return http.HttpResponse(simplejson.dumps(response_params))
   except:
     error = traceback.format_exc()
+    logging.info('error: %s', error)
     return http.HttpResponseServerError(error)
