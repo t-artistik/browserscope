@@ -85,7 +85,8 @@ def UpdateRecentTests(request):
         break
     recent_scores = result_parent.GetResults()
     test_set = all_test_sets.GetTestSet(result_parent.category)
-    recent_stats = test_set.GetStats(recent_scores)
+    visible_test_keys = [t.key for t in test_set.VisibleTests()]
+    recent_stats = test_set.GetStats(visible_test_keys, recent_scores)
     recent_tests.append({
         'result_parent_key': str(result_parent.key()),
         'category': result_parent.category,

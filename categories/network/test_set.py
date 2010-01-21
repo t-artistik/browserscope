@@ -195,6 +195,8 @@ class NetworkTestSet(test_set_base.TestSet):
         score = 100
       elif raw_score == 2:
         score = 50
+      elif raw_score == 1:
+        score = 1
       else:
         score = 0
     elif test_key == 'maxconn':
@@ -202,6 +204,8 @@ class NetworkTestSet(test_set_base.TestSet):
         score = 100
       elif raw_score >= 10:
         score = 50
+      elif raw_score > 1:
+        score = 1
       else:
         score = 0
     return score, str(raw_score)
@@ -232,8 +236,7 @@ class NetworkTestSet(test_set_base.TestSet):
     total_tests = 0
     total_valid_tests = 0
     total_score = 0
-    visible_tests = [test for test in self.tests if test.IsVisible()]
-    for test in visible_tests:
+    for test in self.VisibleTests():
       total_tests += 1
       if test.key in results and results[test.key]['score'] is not None:
         # For booleans, when "score" is 100 that's test_type true.

@@ -120,12 +120,8 @@ class TestSet(object):
     """
     return self._test_dict.get(test_key, None)
 
-  def IsVisibleTest(self, test_key):
-    test = self.GetTest(test_key)
-    if test:
-      return test.IsVisible()
-    else:
-      return False
+  def VisibleTests(self):
+    return [t for t in self.tests if t.IsVisible()]
 
   def IsBooleanTest(self, test_key):
     """Return true if the test_key represents a boolean test.
@@ -216,10 +212,11 @@ class TestSet(object):
                  self.category, medians, num_scores)
     return medians, num_scores
 
-  def GetStats(self, raw_scores, num_scores=None):
+  def GetStats(self, test_keys, raw_scores, num_scores=None):
     """Get normalized scores, display values including summary values.
 
     Args:
+      test_keys: the test keys to include in the 'results'.
       raw_scores: {
           test_key_1: raw_score_1,
           test_key_2: raw_score_2,
@@ -245,29 +242,30 @@ class TestSet(object):
           }
       }
     """
-    logging.info('GetStats: category=%s, raw_scores=%s, num_scores=%s',
-                 self.category, raw_scores, num_scores)
+    logging.info('GetStats: category=%s, test_keys=%s raw_scores=%s,'
+                 ' num_scores=%s',
+                 self.category, test_keys, raw_scores, num_scores)
     results = {}
     total_runs = 0
-    for test_key, raw_score in raw_scores.items():
-      if self.IsVisibleTest(test_key):
-        if num_scores:
-          total_runs = max(total_runs, num_scores[test_key])
-        if raw_score is None:
-          score, display = 0, ''
-        elif self.IsBooleanTest(test_key):
-          if raw_score:
-            score, display = 100, settings.STATS_SCORE_TRUE
-          else:
-            score, display = 1, settings.STATS_SCORE_FALSE
+    for test_key in test_keys:
+      if num_scores:
+        total_runs = max(total_runs, num_scores[test_key])
+      raw_score = raw_scores.get(test_key)
+      if raw_score is None:
+        score, display = 0, ''
+      elif self.IsBooleanTest(test_key):
+        if raw_score:
+          score, display = 100, settings.STATS_SCORE_TRUE
         else:
-          score, display = (
-              self.GetTestScoreAndDisplayValue(test_key, raw_scores))
-        results[test_key] = {
-            'raw_score': raw_score,
-            'score': score,
-            'display': display,
-            }
+          score, display = 1, settings.STATS_SCORE_FALSE
+      else:
+        score, display = (
+            self.GetTestScoreAndDisplayValue(test_key, raw_scores))
+      results[test_key] = {
+          'raw_score': raw_score,
+          'score': score,
+          'display': display,
+          }
     summary_score, summary_display = self.GetRowScoreAndDisplayValue(results)
     stats = {
         'summary_score': summary_score,

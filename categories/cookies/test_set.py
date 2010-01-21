@@ -185,9 +185,7 @@ class CookiesTestSet(test_set_base.TestSet):
     total_tests = 0
     total_valid_tests = 0
     total_score = 0
-    tests = self.tests
-    visible_tests = [test for test in tests if test.IsVisible()]
-    for test in visible_tests:
+    for test in self.VisibleTests():
       total_tests += 1
       if test.key in results:
         score = results[test.key]['score']

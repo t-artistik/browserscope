@@ -79,7 +79,7 @@ def make_test_list():
       doc = '%s\n%s' % (doc, code)
     return JskbTest(name, summary, doc, True)
 
-  for group in ecmascript_snippets._SNIPPET_GROUPS:
+  for group in ecmascript_snippets.SNIPPET_GROUPS:
     group_info = group[0]
     group_members = [new_test(test) for test in group[1:]]
     tests.extend(group_members)
@@ -92,6 +92,41 @@ def make_test_list():
 _TESTS = tuple(make_test_list())
 
 class JskbTestSet(test_set_base.TestSet):
+
+  def ParseResults(self, results_str, ignore_key_errors=False):
+    """Parses a results string.
+
+    Args:
+      results_str: a string like 'test_1=raw_score_1,test_2=raw_score_2, ...'.
+      ignore_key_errors: if true, skip checking keys with list of tests
+    Returns:
+      {test_1: {'raw_score': score_1}, test_2: {'raw_score': score_2}, ...}
+    """
+    test_scores = [x.split('=') for x in str(results_str).split(',')]
+    test_keys = sorted([x[0] for x in test_scores])
+
+    group_keys = [group[0][ecmascript_snippets.NAME]
+                  for group in ecmascript_snippets.SNIPPET_GROUPS]
+    if test_keys == group_keys:
+      # A packed format is used for showing results on the home page.
+      parsed_results = {}
+      for group_key, values in test_scores:
+        group = self.GetTest(group_key)
+        values = int(values)
+        for member in group.group_members:
+          parsed_results[member.key] = {'raw_score': values % 100}
+          values /= 100
+      test_scores = unpacked_test_scores
+    elif test_keys == self._test_keys:
+      try:
+        parsed_results = dict([(key, {'raw_score': int(score)})
+                               for key, score in test_scores])
+      except ValueError:
+        raise ParseResultsValueError
+    else:
+      raise ParseResultsKeyError(expected=self._test_keys, actual=test_keys)
+
+    return parsed_results
 
   def GetTestScoreAndDisplayValue(self, test_key, raw_scores):
     """Get a normalized score (0 to 100) and a value to output to the display.

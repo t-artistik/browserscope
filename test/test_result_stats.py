@@ -226,10 +226,12 @@ class CategoryStatsManagerTest(unittest.TestCase):
                 'apple': {'score': 1, 'raw_score': 0, 'display': 'no'},
                 'banana': {'score': 4, 'raw_score': 2, 'display': 'd:4'}
                 }
-            }
+            },
+        'total_runs': 5,
         }
     self.assertEqual(level_1_stats, result_stats.CategoryStatsManager.GetStats(
-        test_set, browsers=('Firefox 3',)))
+        test_set, browsers=('Firefox 3',),
+        test_keys=['apple', 'banana', 'coconut']))
 
     level_3_stats = {
         'Firefox 3.0.7': {
@@ -252,9 +254,11 @@ class CategoryStatsManagerTest(unittest.TestCase):
                 'banana': {'score': 8, 'raw_score': 4, 'display': 'd:8'}
                 }
             },
+        'total_runs': 5,
         }
     self.assertEqual(level_3_stats, result_stats.CategoryStatsManager.GetStats(
-        test_set, browsers=('Firefox 3.0.7', 'Firefox 3.5')))
+        test_set, browsers=('Firefox 3.0.7', 'Firefox 3.5'),
+        test_keys=['apple', 'banana', 'coconut']))
 
 
 class UpdateStatsCacheTest(unittest.TestCase):
@@ -274,14 +278,15 @@ class UpdateStatsCacheTest(unittest.TestCase):
     category = self.test_set.category
     cls = result_stats.CategoryStatsManager
     browsers = ['Earth', 'Wind', 'Fire']
+    test_keys = ['apple', 'banana', 'coconut']
     self.mox.StubOutWithMock(self.test_set, 'GetMediansAndNumScores')
     self.mox.StubOutWithMock(self.test_set, 'GetStats')
     self.test_set.GetMediansAndNumScores('Earth').AndReturn(('m1', 'n1'))
-    self.test_set.GetStats('m1', 'n1').AndReturn('s1')
+    self.test_set.GetStats(test_keys, 'm1', 'n1').AndReturn('s1')
     self.test_set.GetMediansAndNumScores('Wind').AndReturn(('m2', 'n2'))
-    self.test_set.GetStats('m2', 'n2').AndReturn('s2')
+    self.test_set.GetStats(test_keys, 'm2', 'n2').AndReturn('s2')
     self.test_set.GetMediansAndNumScores('Fire').AndReturn(('m3', 'n3'))
-    self.test_set.GetStats('m3', 'n3').AndReturn('s3')
+    self.test_set.GetStats(test_keys, 'm3', 'n3').AndReturn('s3')
     self.mox.ReplayAll()
     cls.UpdateStatsCache(category, browsers)
     self.mox.VerifyAll()

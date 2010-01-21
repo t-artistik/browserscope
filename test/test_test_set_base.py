@@ -79,11 +79,10 @@ class TestGetStats(unittest.TestCase):
         'results': {},
         'total_runs': 0,
         }
-    self.assertEqual(expected_stats, self.test_set.GetStats({}, {}))
+    self.assertEqual(expected_stats, self.test_set.GetStats([], {}, {}))
 
   def testGetStatsNoNumScores(self):
     test_set = mock_data.MockTestSet()
-    test_set.GetTest('banana').is_hidden_stat = True
     raw_scores = {
         'apple': 1,
         'banana': 2,
@@ -105,12 +104,11 @@ class TestGetStats(unittest.TestCase):
                 },
             }
         }
-    stats = test_set.GetStats(raw_scores)
+    stats = test_set.GetStats(['apple', 'coconut'], raw_scores)
     self.assertEqual(expected_stats, stats)
 
   def testGetStats(self):
     test_set = mock_data.MockTestSet()
-    test_set.GetTest('apple').is_hidden_stat = True
     raw_scores = {
         'apple': 1,
         'banana': 2,
@@ -131,7 +129,6 @@ class TestGetStats(unittest.TestCase):
                 'score': 6,
                 'display': 'd:6'
                 },
-            #'apple': {'score': 10, 'raw_score': 1, 'display': 'yes'},
             'banana': {
                 'raw_score': 2,
                 'score': 4,
@@ -139,5 +136,5 @@ class TestGetStats(unittest.TestCase):
                 }
             }
         }
-    stats = test_set.GetStats(raw_scores, num_scores)
+    stats = test_set.GetStats(['banana', 'coconut'], raw_scores, num_scores)
     self.assertEqual(expected_stats, stats)

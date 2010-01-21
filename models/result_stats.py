@@ -233,12 +233,13 @@ class CategoryStatsManager(object):
   MEMCACHE_NAMESPACE_PREFIX = 'category_stats'
 
   @classmethod
-  def GetStats(cls, test_set, browsers, use_memcache=True):
+  def GetStats(cls, test_set, browsers, test_keys, use_memcache=True):
     """Get stats table for a given test_set.
 
     Args:
       test_set: a TestSet instance
       browsers: a list of browsers to use instead of version level
+      test_keys: a list of test keys to include in 'results'.
       use_memcache: whether to use memcache or not
     Returns:
       {
@@ -257,28 +258,33 @@ class CategoryStatsManager(object):
                   },
               },
           ...
+          'total_runs': total_runs_for_all_browsers_combined,
       }
     """
     category = test_set.category
     if use_memcache:
       memcache_params = cls.MemcacheParams(category)
       stats = memcache.get_multi(browsers, **memcache_params)
+    total_runs = 0
     for browser in browsers:
       if browser not in stats:
         medians, num_scores = test_set.GetMediansAndNumScores(browser)
-        stats[browser] = test_set.GetStats(medians, num_scores)
+        stats[browser] = test_set.GetStats(test_keys, medians, num_scores)
+      total_runs += stats[browser].get('total_runs', 0)
     if use_memcache:
       memcache.set_multi(stats, **memcache_params)
+    stats['total_runs'] = total_runs
     return stats
 
   @classmethod
   def UpdateStatsCache(cls, category, browsers):
     logging.info('UpdateStatsCache: category=%s, browsers=%s', category, browsers)
     test_set = all_test_sets.GetTestSet(category)
+    test_keys = [t.key for t in test_set.VisibleTests()]
     ua_stats = {}
     for browser in browsers:
       medians, num_scores = test_set.GetMediansAndNumScores(browser)
-      ua_stats[browser] = test_set.GetStats(medians, num_scores)
+      ua_stats[browser] = test_set.GetStats(test_keys, medians, num_scores)
     memcache.set_multi(ua_stats, **cls.MemcacheParams(category))
 
   @classmethod

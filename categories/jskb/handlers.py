@@ -53,8 +53,12 @@ def EnvironmentChecks(request):
   """The main test page."""
   return util.Render(
       request, 'templates/environment-checks.html',
-      params={ 'snippets': json.to_json(ecmascript_snippets._SNIPPET_GROUPS) },
+      params={ 'snippets': json.to_json(ecmascript_snippets.SNIPPET_GROUPS) },
       category=CATEGORY)
+
+  for group in ecmascript_snippets:
+    for snippet in group[1:]:  # group header is item 0
+      snippet_keys.add(snippet[ecmascript_snippets.NAME])
 
 
 def Json(request):
@@ -108,26 +112,34 @@ def Json(request):
           help_page('Please specify useragent'), mimetype='text/html')
 
   user_agent_strings = user_agent_string.split(',')
-  tests = all_test_sets.GetTestSet(CATEGORY).tests
-  stats_data = util.GetStatsData(CATEGORY, tests, user_agent_strings,
-                                 ua_by_param=None, params_str=None,
-                                 version_level='1')
+  test_set = all_test_sets.GetTestSet(CATEGORY)
+  test_keys = [t.key for t in test_set.tests]
+  stats_data = result_stats.CategoryStatsManager.GetStats(
+      test_set, user_agent_strings, test_keys)
+  ua_stats = [(k, v['results'])
+              for k, v in stats_data.items() if k != 'total_runs']
 
-  ua_stats = [(k, stats_data[k].get('results'))
-              for k in stats_data.iterkeys() if k != 'total_runs']
-
+  # Keep only those items that are common across all the user agents requested.
   combined = None
-  for ua, stats in ua_stats:
+  for _, stats in ua_stats:
     if combined is None:
-      combined = dict([(k, v.get('display')) for (k, v) in stats.iteritems()])
+      combined = dict([(k, v.get('display')) for (k, v) in stats.iteritems()
+                       if k in ecmascript_snippets.SNIPPET_NAMES])
     else:
       old_combined = combined
       combined = dict([(k, v.get('display')) for (k, v) in stats.iteritems()
                        if (k in old_combined
                            and old_combined.get(k) == v.get('display'))])
   if combined is None: combined = {}
-  combined['userAgent'] = [ua for (ua, _) in ua_stats]
+  result = [(ecmascript_snippets.with_name(k)[ecmascript_snippets.CODE], v)
+            for (k, v) in combined.iteritems()]
+  result.append(('*userAgent*', json.to_json(ua_stats.keys())))
 
+  def check_json_value(v):
+    if v == 'throw':
+      return '{ "throw": true }'
+    return v
   response = http.HttpResponse(mimetype=out_type)
-  response.write(json.to_json(combined))
+  response.write('{%s}' % ',\n'.join(
+      [('%s:%s' % (json.to_json(k), check_json_value(v))) for (k, v) in result]))
   return response

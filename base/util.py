@@ -195,9 +195,11 @@ def About(request, category, category_title=None, overview='',
   if None == category_title:
     category_title = category.title()
 
-  tests = all_test_sets.GetTestSet(category).tests
-  if not show_hidden:
-    tests = [test for test in tests if test.IsVisible()]
+  test_set = all_test_sets.GetTestSet(category)
+  if show_hidden:
+    tests = test_set.tests
+  else:
+    tests = test_set.VisibleTests()
 
   params = {
     'page_title': "What are the %s Tests?" % (category_title),
@@ -531,6 +533,8 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
   results_str = request.GET.get('%s_results' % category, '')
   current_user_agent_string = request.META['HTTP_USER_AGENT']
 
+  visible_test_keys = [t.key for t in test_set.VisibleTests()]
+
   browsers = browser_param and browser_param.split(',') or None
   if browsers and len(browsers) == 1 and browsers[0][-1] == '*':
     browsers = result_stats.CategoryBrowserManager.GetFilteredBrowsers(
@@ -559,7 +563,7 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
       browsers = result_stats.CategoryBrowserManager.GetBrowsers(
           category, version_level)
     stats_data = result_stats.CategoryStatsManager.GetStats(
-        test_set, browsers, use_memcache=use_memcache)
+        test_set, browsers, visible_test_keys, use_memcache=use_memcache)
 
   # If the output is pickle, we are done and need to return a string.
   if output == 'pickle':
@@ -585,19 +589,16 @@ def GetStats(request, test_set, output='html',  opt_tests=None,
 
   # Adds the current results into the stats_data dict.
   if current_scores:
-    current_stats = test_set.GetStats(current_scores)
+    current_stats = test_set.GetStats(visible_test_keys, current_scores)
     browser_stats = stats_data.setdefault(current_browser, {})
     browser_stats['current_results'] = current_stats['results']
     browser_stats['current_score'] = current_stats['summary_score']
     browser_stats['current_display'] = current_stats['summary_display']
 
-  tests = opt_tests or test_set.tests
-  visible_tests = [test for test in tests if test.IsVisible()]
-
   params = {
     'category': category,
     'category_name': test_set.category_name,
-    'tests': visible_tests,
+    'tests': opt_tests or test_set.VisibleTests(),
     'v': version_level,
     'output': output,
     'ua_by_param': browser_param,
