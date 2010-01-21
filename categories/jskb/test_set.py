@@ -40,7 +40,6 @@ class JskbTest(test_set_base.TestBase):
       doc: a description of the test
       is_hidden_stat: should it be shown on the summary page
     """
-    self.is_hidden_stat = is_hidden_stat
     self.group_members = group_members
     test_set_base.TestBase.__init__(
         self,
@@ -49,7 +48,8 @@ class JskbTest(test_set_base.TestBase):
         doc=doc,
         url=self.TESTS_URL_PATH,
         min_value=0,
-        max_value=2200)  # TODO(mikesamuel): what is a sensible max value?
+        max_value=2200,  # TODO(mikesamuel): what is a sensible max value?
+        is_hidden_stat=is_hidden_stat)
 
 
 def rate_display(display, good):
@@ -77,7 +77,7 @@ def make_test_list():
       doc = code
     else:
       doc = '%s\n%s' % (doc, code)
-    return JskbTest(name, summary, doc, True)
+    return JskbTest(name, summary, doc, is_hidden_stat=True)
 
   for group in ecmascript_snippets.SNIPPET_GROUPS:
     group_info = group[0]
@@ -86,7 +86,8 @@ def make_test_list():
     tests.append(JskbTest(group_info[ecmascript_snippets.NAME],
                           group_info[ecmascript_snippets.NAME],
                           group_info[ecmascript_snippets.DOC],
-                          False, tuple(group_members)))
+                          is_hidden_stat=False,
+                          group_members=tuple(group_members)))
   return tests
 
 _TESTS = tuple(make_test_list())

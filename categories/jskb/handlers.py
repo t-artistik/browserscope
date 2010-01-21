@@ -27,6 +27,7 @@ import re
 from categories import all_test_sets
 from categories.jskb import ecmascript_snippets
 from categories.jskb import json
+from models import result_stats
 from models import user_agent
 from base import util
 
@@ -116,12 +117,12 @@ def Json(request):
   test_keys = [t.key for t in test_set.tests]
   stats_data = result_stats.CategoryStatsManager.GetStats(
       test_set, user_agent_strings, test_keys)
-  ua_stats = [(k, v['results'])
-              for k, v in stats_data.items() if k != 'total_runs']
+  del stats_data['total_runs']
 
   # Keep only those items that are common across all the user agents requested.
   combined = None
-  for _, stats in ua_stats:
+  for browser_stats in stats_data.values():
+    stats = browser_stats['results']
     if combined is None:
       combined = dict([(k, v.get('display')) for (k, v) in stats.iteritems()
                        if k in ecmascript_snippets.SNIPPET_NAMES])
@@ -133,7 +134,7 @@ def Json(request):
   if combined is None: combined = {}
   result = [(ecmascript_snippets.with_name(k)[ecmascript_snippets.CODE], v)
             for (k, v) in combined.iteritems()]
-  result.append(('*userAgent*', json.to_json(ua_stats.keys())))
+  result.append(('*userAgent*', json.to_json(stats_data.keys())))
 
   def check_json_value(v):
     if v == 'throw':
